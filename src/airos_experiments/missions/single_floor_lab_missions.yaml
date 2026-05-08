@@ -1,0 +1,29 @@
+missions:
+  - mission_id: lab_start_to_task_a
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [2.25, 2.35, 1.57]
+    route_id: start_to_task_a
+    dynamic_obstacle_seed: 1
+    speed_limit: 0.35
+    expected_timeout_sec: 90.0
+  - mission_id: lab_start_to_task_b
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [-1.65, -2.35, -1.57]
+    route_id: start_to_task_b
+    dynamic_obstacle_seed: 2
+    speed_limit: 0.35
+    expected_timeout_sec: 90.0
+  - mission_id: lab_door_passage
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [2.10, -1.60, 0.0]
+    route_id: door_passage
+    dynamic_obstacle_seed: 3
+    speed_limit: 0.25
+    expected_timeout_sec: 75.0
+  - mission_id: lab_return_point
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [0.0, -2.45, -1.57]
+    route_id: return_point
+    dynamic_obstacle_seed: 4
+    speed_limit: 0.35
+    expected_timeout_sec: 90.0

@@ -1,0 +1,52 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: true
+
+diff_drive_controller:
+  ros__parameters:
+    use_sim_time: true
+    left_wheel_names:
+      - fl_wheel_joint
+      - rl_wheel_joint
+    right_wheel_names:
+      - fr_wheel_joint
+      - rr_wheel_joint
+    wheel_separation: 0.51
+    wheel_radius: 0.09
+    base_frame_id: base_footprint
+    odom_frame_id: odom
+    publish_rate: 50.0
+    cmd_vel_timeout: 0.5
+    enable_odom_tf: false
+    use_stamped_vel: false
+    publish_limited_velocity: true
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    open_loop: false
+    position_feedback: true
+    velocity_rolling_window_size: 1
+    linear:
+      x:
+        has_velocity_limits: true
+        max_velocity: 0.24
+        min_velocity: 0.0
+        has_acceleration_limits: true
+        max_acceleration: 0.22
+        min_acceleration: -0.35
+    angular:
+      z:
+        has_velocity_limits: true
+        max_velocity: 0.55
+        min_velocity: -0.55
+        has_acceleration_limits: true
+        max_acceleration: 0.55
+        min_acceleration: -0.65

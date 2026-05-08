@@ -1,0 +1,22 @@
+missions:
+  - mission_id: central_to_north_lab
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [-2.0, 8.0, 1.57]
+    route_id: central_to_north_lab
+    dynamic_obstacle_seed: 1
+    speed_limit: 0.35
+    expected_timeout_sec: 120.0
+  - mission_id: central_to_east_warehouse
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [8.0, -6.8, -1.57]
+    route_id: central_to_east_warehouse
+    dynamic_obstacle_seed: 2
+    speed_limit: 0.35
+    expected_timeout_sec: 140.0
+  - mission_id: central_to_west_aisle
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [-8.0, 6.8, 3.14]
+    route_id: central_to_west_aisle
+    dynamic_obstacle_seed: 3
+    speed_limit: 0.30
+    expected_timeout_sec: 140.0

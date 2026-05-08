@@ -1,0 +1,256 @@
+{
+  "type": "FeatureCollection",
+  "name": "single_floor_lab_route",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3857"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1,
+        "frame": "map",
+        "metadata": {
+          "label": "start_zone"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0.0, 0.0]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 2,
+        "frame": "map",
+        "metadata": {
+          "label": "corridor_turn"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-1.55, 0.25]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 3,
+        "frame": "map",
+        "metadata": {
+          "label": "door_passage"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.10, -1.60]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 4,
+        "frame": "map",
+        "metadata": {
+          "label": "task_point_a"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [2.25, 2.35]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 5,
+        "frame": "map",
+        "metadata": {
+          "label": "task_point_b"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-1.65, -2.35]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 6,
+        "frame": "map",
+        "metadata": {
+          "label": "return_point"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0.0, -2.45]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 101,
+        "startid": 1,
+        "endid": 2,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "turn"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[0.0, 0.0], [-1.55, 0.25]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 102,
+        "startid": 2,
+        "endid": 1,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "turn"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[-1.55, 0.25], [0.0, 0.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 103,
+        "startid": 1,
+        "endid": 3,
+        "metadata": {
+          "speed_limit": 0.25,
+          "risk": "narrow_door"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[0.0, 0.0], [2.10, -1.60]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 104,
+        "startid": 3,
+        "endid": 1,
+        "metadata": {
+          "speed_limit": 0.25,
+          "risk": "narrow_door"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[2.10, -1.60], [0.0, 0.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 105,
+        "startid": 3,
+        "endid": 4,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "open_area"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[2.10, -1.60], [2.25, 2.35]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 106,
+        "startid": 4,
+        "endid": 3,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "open_area"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[2.25, 2.35], [2.10, -1.60]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 107,
+        "startid": 1,
+        "endid": 5,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "corridor"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[0.0, 0.0], [-1.65, -2.35]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 108,
+        "startid": 5,
+        "endid": 1,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "corridor"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[-1.65, -2.35], [0.0, 0.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 109,
+        "startid": 1,
+        "endid": 6,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "return"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[0.0, 0.0], [0.0, -2.45]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 110,
+        "startid": 6,
+        "endid": 1,
+        "metadata": {
+          "speed_limit": 0.35,
+          "risk": "return"
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [[[0.0, -2.45], [0.0, 0.0]]]
+      }
+    }
+  ]
+}
