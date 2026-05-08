@@ -42,6 +42,8 @@ setup(
         'console_scripts': [
             'generate_world_map = airos_experiments.world_map_generator:main',
             'fast_lio_localization_bridge = airos_experiments.fast_lio_localization_bridge:main',
+            'generate_advanced_planner_candidates = '
+            'airos_experiments.advanced_planner_candidate:main',
             'imu_republisher = airos_experiments.imu_republisher:main',
             'initial_pose_publisher = airos_experiments.initial_pose_publisher:main',
             'lifecycle_activator = airos_experiments.lifecycle_activator:main',

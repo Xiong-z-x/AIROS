@@ -95,13 +95,21 @@ def _run(
     command: list[str],
     timeout_sec: float,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout_sec,
-    )
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            stdout=exc.stdout if isinstance(exc.stdout, str) else '',
+            stderr=exc.stderr if isinstance(exc.stderr, str) else '',
+        )
 
 
 def _wait_for_active(log_path: Path, timeout_sec: float) -> bool:

@@ -38,6 +38,7 @@
 - `sim.launch.py` 新增 `open_source_scene_assets:=true|false` 和 `robot_visual_profile:=analytic|reference_mesh`，用于可选开源 Building/Go2W 视觉资产。
 - 新增 `src/airos_nav/maps/advanced_indoor_ramp.yaml/.pgm`、`src/airos_nav/routes/advanced_indoor_ramp_route.geojson`、`src/airos_experiments/missions/advanced_indoor_ramp_missions.yaml`。
 - `nav.launch.py` 新增 `planner_profile:=baseline|research`，research profile 使用 `nav2_research_profile.yaml`。
+- `generate_advanced_planner_candidates` 新增可运行的 Nav2/PCT-style/RL-style 候选路线对比报告入口，PCT/RL 明确标注为研究替身而不是训练完成的 runtime。
 - `run_clean_nav_batch` 新增 `--world`、`--map`、`--route-graph`、`--planner-profile`、`--physical-dynamic-obstacles`，可用于高级场景 batch。
 - 新增 `src/airos_experiments/test/test_deep_upgrade_artifacts.py` 锁定这些入口。
 - 最终验证：32 个 Python/配置测试通过，5 个 ROS 包构建通过，高级 FAST-LIO + Nav2 research runtime smoke 通过，route graph verifier 通过。

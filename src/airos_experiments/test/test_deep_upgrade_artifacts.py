@@ -65,11 +65,18 @@ def test_nav_launch_exposes_planner_profile_and_advanced_defaults() -> None:
     nav_launch = _read_text('src/airos_nav/launch/nav.launch.py')
     profile_text = _read_text('src/airos_nav/config/nav2_research_profile.yaml')
     readme_text = _read_text('docs/advanced_planning_research_profile.md')
+    setup_text = _read_text('src/airos_experiments/setup.py')
+    candidate_text = _read_text(
+        'src/airos_experiments/airos_experiments/advanced_planner_candidate.py'
+    )
 
     assert "DeclareLaunchArgument('planner_profile', default_value='baseline')" in nav_launch
     assert "nav2_research_profile.yaml" in nav_launch
     assert "planner_profile" in nav_launch
     assert 'nav2_mppi_controller::MPPIController' in profile_text
+    assert 'generate_advanced_planner_candidates' in setup_text
+    assert 'airos_advanced_planner_candidate.v1' in candidate_text
+    assert 'research_surrogate_not_trained_runtime' in candidate_text
     assert 'PCT-planner' in readme_text
     assert '强化学习' in readme_text
 

@@ -52,6 +52,11 @@
       "type": "Feature",
       "properties": {"id": 204, "startid": 1, "endid": 5, "metadata": {"speed_limit": 0.20, "risk": "physical_dynamic_obstacle"}},
       "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [2.8, -2.8]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 205, "startid": 5, "endid": 4, "metadata": {"speed_limit": 0.24, "risk": "clear_bypass"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[2.8, -2.8], [8.4, -2.8], [8.4, 5.8], [5.8, 6.5]]]}
     }
   ]
 }
