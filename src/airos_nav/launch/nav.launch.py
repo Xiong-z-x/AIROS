@@ -2,7 +2,13 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    GroupAction,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    SetEnvironmentVariable,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -41,11 +47,22 @@ def _external_map_manager_enabled(
     ])
 
 
-def generate_launch_description():
+def _launch_setup(context, *args, **kwargs):
     pkg_nav = get_package_share_directory('airos_nav')
     pkg_slam = get_package_share_directory('airos_slam')
     map_file = LaunchConfiguration('map')
-    params_file = LaunchConfiguration('params_file')
+    planner_profile = LaunchConfiguration('planner_profile')
+    planner_profile_value = planner_profile.perform(context)
+    if planner_profile_value not in {'baseline', 'research'}:
+        raise RuntimeError(
+            "planner_profile must be 'baseline' or 'research', "
+            f"got {planner_profile_value!r}"
+        )
+    params_file = (
+        LaunchConfiguration('research_params_file')
+        if planner_profile_value == 'research'
+        else LaunchConfiguration('params_file')
+    )
     route_graph = LaunchConfiguration('route_graph')
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
@@ -244,7 +261,10 @@ def generate_launch_description():
             output='screen',
             parameters=[configured_params],
             arguments=['--ros-args', '--log-level', log_level],
-            remappings=remappings + [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel_smoothed')],
+            remappings=remappings + [
+                ('cmd_vel', 'cmd_vel_nav'),
+                ('cmd_vel_smoothed', 'cmd_vel_smoothed'),
+            ],
         ),
         Node(
             package='nav2_lifecycle_manager',
@@ -261,7 +281,11 @@ def generate_launch_description():
 
     collision_monitor = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('nav2_collision_monitor'), 'launch', 'collision_monitor_node.launch.py')
+            os.path.join(
+                get_package_share_directory('nav2_collision_monitor'),
+                'launch',
+                'collision_monitor_node.launch.py',
+            )
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
@@ -308,18 +332,7 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
-    return LaunchDescription([
-        SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
-        DeclareLaunchArgument('map', default_value=os.path.join(pkg_nav, 'maps', 'single_floor_lab.yaml')),
-        DeclareLaunchArgument('params_file', default_value=os.path.join(pkg_nav, 'config', 'nav2_params.yaml')),
-        DeclareLaunchArgument('route_graph', default_value=os.path.join(pkg_nav, 'routes', 'single_floor_lab_route.geojson')),
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
-        DeclareLaunchArgument('autostart', default_value='true'),
-        DeclareLaunchArgument('rviz', default_value='true'),
-        DeclareLaunchArgument('localization', default_value='amcl'),
-        DeclareLaunchArgument('use_route', default_value='false'),
-        DeclareLaunchArgument('external_map_manager', default_value='true'),
-        DeclareLaunchArgument('log_level', default_value='info'),
+    return [
         map_server,
         amcl,
         localization_manager,
@@ -332,4 +345,45 @@ def generate_launch_description():
         collision_monitor,
         route_server,
         rviz,
+    ]
+
+
+def generate_launch_description():
+    pkg_nav = get_package_share_directory('airos_nav')
+
+    return LaunchDescription([
+        SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
+        DeclareLaunchArgument(
+            'map',
+            default_value=os.path.join(pkg_nav, 'maps', 'single_floor_lab.yaml'),
+        ),
+        DeclareLaunchArgument(
+            'params_file',
+            default_value=os.path.join(pkg_nav, 'config', 'nav2_params.yaml'),
+        ),
+        DeclareLaunchArgument(
+            'research_params_file',
+            default_value=os.path.join(
+                pkg_nav,
+                'config',
+                'nav2_research_profile.yaml',
+            ),
+        ),
+        DeclareLaunchArgument('planner_profile', default_value='baseline'),
+        DeclareLaunchArgument(
+            'route_graph',
+            default_value=os.path.join(
+                pkg_nav,
+                'routes',
+                'single_floor_lab_route.geojson',
+            ),
+        ),
+        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('autostart', default_value='true'),
+        DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('localization', default_value='amcl'),
+        DeclareLaunchArgument('use_route', default_value='false'),
+        DeclareLaunchArgument('external_map_manager', default_value='true'),
+        DeclareLaunchArgument('log_level', default_value='info'),
+        OpaqueFunction(function=_launch_setup),
     ])

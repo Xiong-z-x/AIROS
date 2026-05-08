@@ -105,7 +105,10 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
     assert follow_path['use_rotate_to_heading'] is False
     assert follow_path['allow_reversing'] is False
     assert 0.55 <= follow_path['angular_dist_threshold'] <= 0.9
-    assert 0.25 <= follow_path['angular_disengage_threshold'] < follow_path['angular_dist_threshold']
+    assert (
+        0.25 <= follow_path['angular_disengage_threshold']
+        < follow_path['angular_dist_threshold']
+    )
     assert smoother['max_velocity'][0] <= 0.24
     assert smoother['min_velocity'][0] >= 0.0
 

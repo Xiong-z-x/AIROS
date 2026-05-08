@@ -41,7 +41,11 @@ def generate_launch_description():
         launch_configurations={
             'gui': LaunchConfiguration('gui'),
             'rviz': 'false',
+            'world': LaunchConfiguration('world'),
             'dynamic_obstacles': 'false',
+            'physical_dynamic_obstacles': LaunchConfiguration(
+                'physical_dynamic_obstacles'
+            ),
             'sensor_source': LaunchConfiguration('sensor_source'),
             'pointcloud': 'true',
             'pointcloud_registered': 'false',
@@ -100,6 +104,9 @@ def generate_launch_description():
         launch_configurations={
             'rviz': 'false',
             'use_route': LaunchConfiguration('use_route'),
+            'map': LaunchConfiguration('map'),
+            'route_graph': LaunchConfiguration('route_graph'),
+            'planner_profile': LaunchConfiguration('planner_profile'),
             'localization': 'static',
             'log_level': LaunchConfiguration('log_level'),
         },
@@ -123,7 +130,26 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('world', default_value='single_floor_lab'),
+        DeclareLaunchArgument(
+            'map',
+            default_value=os.path.join(
+                get_package_share_directory('airos_nav'),
+                'maps',
+                'single_floor_lab.yaml',
+            ),
+        ),
+        DeclareLaunchArgument(
+            'route_graph',
+            default_value=os.path.join(
+                get_package_share_directory('airos_nav'),
+                'routes',
+                'single_floor_lab_route.geojson',
+            ),
+        ),
         DeclareLaunchArgument('use_route', default_value='true'),
+        DeclareLaunchArgument('planner_profile', default_value='baseline'),
+        DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('log_level', default_value='warn'),
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),

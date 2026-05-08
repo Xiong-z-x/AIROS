@@ -19,8 +19,8 @@
             frame_id_body: "fast_lio_body"
 
         preprocess:
-            lidar_type: 5
-            scan_line: 1
+            lidar_type: 1
+            scan_line: 16
             scan_rate: 10
             timestamp_unit: 0
             blind: 0.2

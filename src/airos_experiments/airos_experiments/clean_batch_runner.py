@@ -14,6 +14,8 @@ from rclpy.utilities import remove_ros_args
 
 from airos_experiments.nav_trial_runner import _load_missions
 
+ROUTE_WAYPOINT_USE_ROUTE_ARGUMENT = 'use_route:=true'
+
 
 def _open_log(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,12 +210,19 @@ def main() -> None:
     parser.add_argument('--trial-timeout-sec', type=float, default=130.0)
     parser.add_argument('--shutdown-timeout-sec', type=float, default=8.0)
     parser.add_argument('--attempts', type=int, default=1)
+    parser.add_argument('--world', default='single_floor_lab')
+    parser.add_argument(
+        '--map',
+        default='src/airos_nav/maps/single_floor_lab.yaml',
+    )
+    parser.add_argument('--planner-profile', default='baseline')
     parser.add_argument('--use-route-waypoints', action='store_true')
     parser.add_argument(
         '--route-graph',
         default='src/airos_nav/routes/single_floor_lab_route.geojson',
     )
     parser.add_argument('--dynamic-obstacles', action='store_true')
+    parser.add_argument('--physical-dynamic-obstacles', action='store_true')
     parser.add_argument('--gui', action='store_true')
     parser.add_argument('--rviz', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
@@ -277,10 +286,13 @@ def main() -> None:
                     'launch',
                     'airos_sim',
                     'sim.launch.py',
+                    f'world:={args.world}',
                     f'gui:={str(args.gui).lower()}',
                     f'rviz:={str(args.rviz).lower()}',
                     'dynamic_obstacles:='
                     f'{str(args.dynamic_obstacles).lower()}',
+                    'physical_dynamic_obstacles:='
+                    f'{str(args.physical_dynamic_obstacles).lower()}',
                     f'dynamic_obstacle_seed:={mission.dynamic_obstacle_seed}',
                 ],
                 sim_log,
@@ -296,7 +308,10 @@ def main() -> None:
                         'airos_nav',
                         'nav.launch.py',
                         'rviz:=false',
-                        'use_route:=false',
+                        f'map:={args.map}',
+                        f'route_graph:={args.route_graph}',
+                        f'planner_profile:={args.planner_profile}',
+                        f'use_route:={str(args.use_route_waypoints).lower()}',
                     ],
                     nav_log,
                     env,

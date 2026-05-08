@@ -1,0 +1,22 @@
+missions:
+  - mission_id: ramp_entry_to_upper_observation
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [0.0, 8.2, 1.57]
+    route_id: ramp_entry_to_upper_observation
+    dynamic_obstacle_seed: 11
+    speed_limit: 0.22
+    expected_timeout_sec: 120.0
+  - mission_id: advanced_lab_crossing
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [5.8, 6.5, 0.0]
+    route_id: advanced_lab_crossing
+    dynamic_obstacle_seed: 12
+    speed_limit: 0.24
+    expected_timeout_sec: 120.0
+  - mission_id: dynamic_obstacle_corridor
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [2.8, -2.8, -1.57]
+    route_id: dynamic_obstacle_corridor
+    dynamic_obstacle_seed: 13
+    speed_limit: 0.20
+    expected_timeout_sec: 100.0

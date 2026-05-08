@@ -6,6 +6,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
     OpaqueFunction,
@@ -39,7 +40,11 @@ def _gazebo_env_for_rendering_mode(rendering_mode: str) -> dict[str, str]:
 
 
 def _gazebo_actions(world_file: str, gui: bool, rendering_mode: str):
-    gz_args = f"-r --render-engine ogre2 --render-engine-gui ogre2 {world_file}" if gui else f"-r -s --render-engine ogre2 {world_file}"
+    gz_args = (
+        f'-r --render-engine ogre2 --render-engine-gui ogre2 {world_file}'
+        if gui
+        else f'-r -s --render-engine ogre2 {world_file}'
+    )
     actions = [
         SetEnvironmentVariable(name=name, value=value)
         for name, value in _gazebo_env_for_rendering_mode(rendering_mode).items()
@@ -47,7 +52,11 @@ def _gazebo_actions(world_file: str, gui: bool, rendering_mode: str):
     actions.append(
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(get_package_share_directory('ros_gz_sim'), 'launch', 'gz_sim.launch.py')
+                os.path.join(
+                    get_package_share_directory('ros_gz_sim'),
+                    'launch',
+                    'gz_sim.launch.py',
+                )
             ),
             launch_arguments={'gz_args': gz_args}.items(),
         )
@@ -61,8 +70,22 @@ def _launch_setup(context, *args, **kwargs):
     pkg_control = get_package_share_directory('airos_control')
 
     gui = LaunchConfiguration('gui').perform(context).lower() in {'true', '1', 'yes'}
+    world_name = LaunchConfiguration('world').perform(context)
+    world_files = {
+        'single_floor_lab': 'single_floor_lab.sdf',
+        'advanced_indoor_ramp': 'advanced_indoor_ramp.sdf',
+    }
+    if world_name not in world_files:
+        raise RuntimeError(
+            'world must be one of '
+            f"{sorted(world_files)}, got {world_name!r}"
+        )
     dynamic_obstacles = (
         LaunchConfiguration('dynamic_obstacles').perform(context).lower()
+        in {'true', '1', 'yes'}
+    )
+    physical_dynamic_obstacles = (
+        LaunchConfiguration('physical_dynamic_obstacles').perform(context).lower()
         in {'true', '1', 'yes'}
     )
     sensor_source = LaunchConfiguration('sensor_source').perform(context).lower()
@@ -88,7 +111,7 @@ def _launch_setup(context, *args, **kwargs):
     )
     gazebo_rendering_mode = LaunchConfiguration('gazebo_rendering_mode').perform(context)
 
-    world_file = os.path.join(pkg_sim, 'worlds', 'single_floor_lab.sdf')
+    world_file = os.path.join(pkg_sim, 'worlds', world_files[world_name])
     bridge_config = os.path.join(pkg_sim, 'config', 'ros_gz_bridge.yaml')
     xacro_file = os.path.join(pkg_desc, 'urdf', 'go2w_nav_eq.urdf.xacro')
     controller_yaml = os.path.join(pkg_control, 'config', 'go2w_controllers.yaml')
@@ -222,6 +245,19 @@ def _launch_setup(context, *args, **kwargs):
         }],
     )
 
+    livox_custom_bridge = Node(
+        package='airos_experiments',
+        executable='livox_custom_bridge',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'input_topic': '/livox/lidar_points',
+            'output_topic': '/livox/lidar',
+            'scan_line': 16,
+            'scan_period_us': 100000,
+        }],
+    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -236,8 +272,33 @@ def _launch_setup(context, *args, **kwargs):
         delayed_sensor_nodes.append(scan_emulator)
         if pointcloud_enabled:
             delayed_sensor_nodes.append(pointcloud_emulator)
+    if native_sensor_enabled and pointcloud_enabled:
+        delayed_sensor_nodes.append(livox_custom_bridge)
     if pointcloud_enabled:
         delayed_sensor_nodes.append(livox_imu_relay)
+
+    dynamic_obstacle_triggers = []
+    if physical_dynamic_obstacles:
+        dynamic_obstacle_triggers.append(
+            TimerAction(
+                period=7.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            'ign',
+                            'topic',
+                            '-t',
+                            f'/airos/{world_name}/start_dynamic_obstacles',
+                            '-m',
+                            'ignition.msgs.Empty',
+                            '-p',
+                            ' ',
+                        ],
+                        output='screen',
+                    ),
+                ],
+            )
+        )
 
     return [
         gazebo,
@@ -249,6 +310,7 @@ def _launch_setup(context, *args, **kwargs):
             period=6.0,
             actions=delayed_sensor_nodes,
         ),
+        *dynamic_obstacle_triggers,
         rviz,
     ]
 
@@ -257,8 +319,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('world', default_value='single_floor_lab'),
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
+        DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='0'),
         DeclareLaunchArgument('pointcloud', default_value='true'),
         DeclareLaunchArgument('pointcloud_registered', default_value='true'),

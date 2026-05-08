@@ -78,7 +78,7 @@ def test_bridge_exports_native_gazebo_scan_and_pointcloud() -> None:
     assert by_topic['/scan']['gz_type_name'] == 'ignition.msgs.LaserScan'
     assert by_topic['/scan']['direction'] == 'GZ_TO_ROS'
 
-    livox_cloud = by_ros_topic['/livox/lidar']
+    livox_cloud = by_ros_topic['/livox/lidar_points']
     assert livox_cloud['topic_name'] == '/livox/lidar/points'
     assert livox_cloud['ros_type_name'] == 'sensor_msgs/msg/PointCloud2'
     assert livox_cloud['gz_type_name'] == 'ignition.msgs.PointCloudPacked'
@@ -138,8 +138,14 @@ def test_sim_launch_defaults_gazebo_to_wsl_stable_rendering() -> None:
     )
     world_text = _read_text('src/airos_sim/worlds/single_floor_lab.sdf')
 
-    assert "DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable')" in launch_text
-    assert "'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode')" in visual_launch_text
+    assert (
+        "DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable')"
+        in launch_text
+    )
+    assert (
+        "'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode')"
+        in visual_launch_text
+    )
     assert "'LIBGL_ALWAYS_SOFTWARE': '1'" in launch_text
     assert "'GALLIUM_DRIVER': 'llvmpipe'" in launch_text
     assert "'QT_QPA_PLATFORM': 'xcb'" in launch_text
@@ -173,7 +179,7 @@ def test_visual_navigation_does_not_publish_simulated_laser_map() -> None:
 def test_nav_rviz_keeps_live_clouds_single_frame_and_disabled() -> None:
     laser_map = _rviz_display('PointCloud Map /Laser_map')
     registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
-    livox_cloud = _rviz_display('Livox Cloud /livox/lidar')
+    livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
     assert laser_map['Enabled'] is True
     assert laser_map['Style'] == 'Points'

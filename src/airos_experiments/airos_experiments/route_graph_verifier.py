@@ -104,11 +104,26 @@ def _run(
     )
 
 
-def _wait_for_active(timeout_sec: float) -> bool:
+def _wait_for_active(log_path: Path, timeout_sec: float) -> bool:
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
-        result = _run(['ros2', 'lifecycle', 'get', '/route_server'], 2.0)
-        if result.returncode == 0 and 'active [3]' in result.stdout:
+        if log_path.exists():
+            log_text = log_path.read_text(
+                encoding='utf-8',
+                errors='replace',
+            )
+            if 'Managed nodes are active' in log_text:
+                return True
+            if 'Activating' in log_text and 'Creating bond' in log_text:
+                return True
+        result = _run(
+            ['ros2', 'action', 'list', '-t'],
+            2.0,
+        )
+        if (
+            result.returncode == 0
+            and '/compute_route [nav2_msgs/action/ComputeRoute]' in result.stdout
+        ):
             return True
         time.sleep(0.5)
     return False
@@ -124,6 +139,8 @@ def verify_route_graph(
     with tempfile.TemporaryDirectory(prefix='airos_route_') as tmp:
         params_path = Path(tmp) / 'route_params.yaml'
         _write_route_params(params_path, graph_path, use_sim_time=False)
+        server_log = log_dir / 'route_server.log'
+        manager_log = log_dir / 'route_lifecycle_manager.log'
         server = _start_process(
             [
                 'ros2',
@@ -134,7 +151,7 @@ def verify_route_graph(
                 '--params-file',
                 str(params_path),
             ],
-            log_dir / 'route_server.log',
+            server_log,
         )
         manager = _start_process(
             [
@@ -148,10 +165,10 @@ def verify_route_graph(
                 '--params-file',
                 str(params_path),
             ],
-            log_dir / 'route_lifecycle_manager.log',
+            manager_log,
         )
         try:
-            if not _wait_for_active(timeout_sec):
+            if not _wait_for_active(manager_log, timeout_sec):
                 return False
             goal = (
                 f'{{start_id: {start_id}, goal_id: {goal_id}, '

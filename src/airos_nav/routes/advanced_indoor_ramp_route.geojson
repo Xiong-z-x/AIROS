@@ -1,0 +1,57 @@
+{
+  "type": "FeatureCollection",
+  "name": "advanced_indoor_ramp_route",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3857"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": 1, "frame": "map", "metadata": {"label": "start_zone"}},
+      "geometry": {"type": "Point", "coordinates": [0.0, 0.0]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 2, "frame": "map", "metadata": {"label": "ramp_entry"}},
+      "geometry": {"type": "Point", "coordinates": [0.0, 5.8]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 3, "frame": "map", "metadata": {"label": "upper_observation"}},
+      "geometry": {"type": "Point", "coordinates": [0.0, 8.2]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 4, "frame": "map", "metadata": {"label": "north_shelf"}},
+      "geometry": {"type": "Point", "coordinates": [5.8, 6.5]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 5, "frame": "map", "metadata": {"label": "dynamic_corridor"}},
+      "geometry": {"type": "Point", "coordinates": [2.8, -2.8]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 201, "startid": 1, "endid": 2, "metadata": {"speed_limit": 0.22, "risk": "approach_ramp"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [0.0, 5.8]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 202, "startid": 2, "endid": 3, "metadata": {"speed_limit": 0.18, "risk": "ramp_visual_only"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 5.8], [0.0, 8.2]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 203, "startid": 1, "endid": 4, "metadata": {"speed_limit": 0.24, "risk": "complex_lab"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [2.8, 2.8], [5.8, 6.5]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 204, "startid": 1, "endid": 5, "metadata": {"speed_limit": 0.20, "risk": "physical_dynamic_obstacle"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [2.8, -2.8]]]}
+    }
+  ]
+}
