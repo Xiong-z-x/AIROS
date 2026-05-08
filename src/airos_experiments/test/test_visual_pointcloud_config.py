@@ -33,6 +33,68 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert 'static_map_to_odom' not in launch_text
 
 
+def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
+    launch_text = _read_text('src/airos_sim/launch/sim.launch.py')
+    visual_launch_text = _read_text(
+        'src/airos_experiments/launch/visual_fast_lio_navigation.launch.py'
+    )
+
+    assert "DeclareLaunchArgument('sensor_source', default_value='native')" in launch_text
+    assert "sensor_source = LaunchConfiguration('sensor_source')" in launch_text
+    assert "native_sensor_enabled = sensor_source == 'native'" in launch_text
+    assert "emulated_sensor_enabled = sensor_source == 'emulated'" in launch_text
+    assert "not native_sensor_enabled" in launch_text
+    assert "ros_topic_name in {'/scan', '/livox/lidar'}" in launch_text
+    assert "'sensor_source': LaunchConfiguration('sensor_source')" in visual_launch_text
+    assert "DeclareLaunchArgument('sensor_source', default_value='native')" in visual_launch_text
+
+
+def test_native_gazebo_lidar_sensors_are_declared_on_robot() -> None:
+    urdf_text = _read_text(
+        'src/airos_go2w_description/urdf/go2w_nav_eq.urdf.xacro'
+    )
+
+    assert '<sensor name="nav_lidar_2d" type="gpu_lidar">' in urdf_text
+    assert '<topic>/scan</topic>' in urdf_text
+    assert '<horizontal><samples>720</samples>' in urdf_text
+    assert '<vertical><samples>1</samples>' in urdf_text
+    assert '<sensor name="fast_lio_lidar_3d" type="gpu_lidar">' in urdf_text
+    assert '<topic>/livox/lidar</topic>' in urdf_text
+    assert '<vertical><samples>16</samples>' in urdf_text
+    assert '<gz_frame_id>livox_frame</gz_frame_id>' in urdf_text
+
+
+def test_bridge_exports_native_gazebo_scan_and_pointcloud() -> None:
+    bridge_config = yaml.safe_load(
+        _read_text('src/airos_sim/config/ros_gz_bridge.yaml')
+    )
+    by_topic = {entry['topic_name']: entry for entry in bridge_config}
+    by_ros_topic = {
+        entry.get('ros_topic_name', entry['topic_name']): entry
+        for entry in bridge_config
+    }
+
+    assert by_topic['/scan']['ros_type_name'] == 'sensor_msgs/msg/LaserScan'
+    assert by_topic['/scan']['gz_type_name'] == 'ignition.msgs.LaserScan'
+    assert by_topic['/scan']['direction'] == 'GZ_TO_ROS'
+
+    livox_cloud = by_ros_topic['/livox/lidar']
+    assert livox_cloud['topic_name'] == '/livox/lidar/points'
+    assert livox_cloud['ros_type_name'] == 'sensor_msgs/msg/PointCloud2'
+    assert livox_cloud['gz_type_name'] == 'ignition.msgs.PointCloudPacked'
+    assert livox_cloud['direction'] == 'GZ_TO_ROS'
+
+
+def test_bridge_remaps_native_pointcloud_to_fast_lio_topic() -> None:
+    launch_text = _read_text('src/airos_sim/launch/sim.launch.py')
+
+    assert 'bridge_remaps = []' in launch_text
+    assert "entry.get('ros_topic_name', gz_topic_name)" in launch_text
+    assert "entry.get('topic_name')" in launch_text
+    assert "'--ros-args'" in launch_text
+    assert "'-r'" in launch_text
+
+
 def test_external_map_manager_can_be_disabled_for_fast_lio_launch() -> None:
     nav_launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
 

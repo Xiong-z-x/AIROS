@@ -8,6 +8,17 @@
   gz_type_name: gz.msgs.IMU
   direction: GZ_TO_ROS
 
+- topic_name: /scan
+  ros_type_name: sensor_msgs/msg/LaserScan
+  gz_type_name: ignition.msgs.LaserScan
+  direction: GZ_TO_ROS
+
+- topic_name: /livox/lidar/points
+  ros_topic_name: /livox/lidar
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: ignition.msgs.PointCloudPacked
+  direction: GZ_TO_ROS
+
 - topic_name: /odom
   ros_type_name: nav_msgs/msg/Odometry
   gz_type_name: ignition.msgs.Odometry

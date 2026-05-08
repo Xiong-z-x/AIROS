@@ -65,6 +65,14 @@ def _launch_setup(context, *args, **kwargs):
         LaunchConfiguration('dynamic_obstacles').perform(context).lower()
         in {'true', '1', 'yes'}
     )
+    sensor_source = LaunchConfiguration('sensor_source').perform(context).lower()
+    if sensor_source not in {'native', 'emulated'}:
+        raise RuntimeError(
+            "sensor_source must be 'native' or 'emulated', "
+            f"got {sensor_source!r}"
+        )
+    native_sensor_enabled = sensor_source == 'native'
+    emulated_sensor_enabled = sensor_source == 'emulated'
     dynamic_obstacle_seed = int(LaunchConfiguration('dynamic_obstacle_seed').perform(context))
     pointcloud_enabled = (
         LaunchConfiguration('pointcloud').perform(context).lower()
@@ -92,23 +100,33 @@ def _launch_setup(context, *args, **kwargs):
     ).toxml()
 
     bridge_specs = []
+    bridge_remaps = []
     with open(bridge_config, 'r', encoding='utf-8') as stream:
         bridge_entries = yaml.safe_load(stream) or []
     for entry in bridge_entries:
         direction = str(entry.get('direction', 'BIDIRECTIONAL')).upper()
+        gz_topic_name = str(entry.get('topic_name'))
+        ros_topic_name = str(entry.get('ros_topic_name', gz_topic_name))
+        if (
+            not native_sensor_enabled
+            and ros_topic_name in {'/scan', '/livox/lidar'}
+        ):
+            continue
         if direction == 'GZ_TO_ROS':
             bridge_specs.append(
-                f"{entry['topic_name']}@{entry['ros_type_name']}[{entry['gz_type_name']}"
+                f"{gz_topic_name}@{entry['ros_type_name']}[{entry['gz_type_name']}"
             )
         elif direction == 'ROS_TO_GZ':
             bridge_specs.append(
-                f"{entry['ros_topic_name']}@{entry['ros_type_name']}]"
+                f"{ros_topic_name}@{entry['ros_type_name']}]"
                 f"{entry['gz_type_name']}"
             )
         else:
             bridge_specs.append(
-                f"{entry['topic_name']}@{entry['ros_type_name']}@{entry['gz_type_name']}"
+                f"{gz_topic_name}@{entry['ros_type_name']}@{entry['gz_type_name']}"
             )
+        if ros_topic_name != gz_topic_name:
+            bridge_remaps.extend(['--ros-args', '-r', f'{gz_topic_name}:={ros_topic_name}'])
 
     gazebo = _gazebo_actions(world_file, gui, gazebo_rendering_mode)
 
@@ -143,7 +161,7 @@ def _launch_setup(context, *args, **kwargs):
         package='ros_gz_bridge',
         executable='parameter_bridge',
         output='screen',
-        arguments=bridge_specs,
+        arguments=bridge_specs + bridge_remaps,
     )
 
     control = IncludeLaunchDescription(
@@ -213,9 +231,13 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': True}],
     )
 
-    delayed_sensor_nodes = [scan_emulator]
+    delayed_sensor_nodes = []
+    if emulated_sensor_enabled:
+        delayed_sensor_nodes.append(scan_emulator)
+        if pointcloud_enabled:
+            delayed_sensor_nodes.append(pointcloud_emulator)
     if pointcloud_enabled:
-        delayed_sensor_nodes.extend([pointcloud_emulator, livox_imu_relay])
+        delayed_sensor_nodes.append(livox_imu_relay)
 
     return [
         gazebo,
@@ -235,6 +257,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='0'),
         DeclareLaunchArgument('pointcloud', default_value='true'),
