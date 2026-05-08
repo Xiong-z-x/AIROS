@@ -1,7 +1,9 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="unitree_go2w_nav_eq">
   <xacro:arg name="controller_config" default="$(find airos_control)/config/go2w_controllers.yaml"/>
+  <xacro:arg name="visual_profile" default="analytic"/>
 
+  <xacro:property name="visual_profile" value="$(arg visual_profile)"/>
   <xacro:property name="base_length" value="0.70"/>
   <xacro:property name="base_width" value="0.43"/>
   <xacro:property name="base_height" value="0.24"/>
@@ -44,6 +46,14 @@
 
   <xacro:macro name="wheel" params="prefix x y">
     <link name="${prefix}_wheel_link">
+      <xacro:if value="$(eval '${visual_profile}' == 'reference_mesh')">
+        <visual name="go2w_reference_wheel">
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="package://airos_go2w_description/meshes/open_source_go2w_reference/${'left_wheel.dae' if y &gt; 0 else 'right_wheel.dae'}" scale="1.0 1.0 1.0"/>
+          </geometry>
+        </visual>
+      </xacro:if>
       <visual>
         <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
         <geometry>
@@ -103,6 +113,14 @@
   <link name="base_footprint"/>
 
   <link name="base_link">
+    <xacro:if value="$(eval '${visual_profile}' == 'reference_mesh')">
+      <visual name="go2w_reference_base">
+        <origin xyz="0 0 0.015" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://airos_go2w_description/meshes/open_source_go2w_reference/base.dae" scale="1.8 2.6 1.3"/>
+        </geometry>
+      </visual>
+    </xacro:if>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -137,6 +155,14 @@
   <xacro:leg_visual prefix="rr" x="${-wheel_x}" y="${-wheel_y}"/>
 
   <link name="lidar_link">
+    <xacro:if value="$(eval '${visual_profile}' == 'reference_mesh')">
+      <visual name="mid360_reference_visual">
+        <origin xyz="0 0 -0.035" rpy="0 0 3.14159"/>
+        <geometry>
+          <mesh filename="package://airos_go2w_description/meshes/open_source_go2w_reference/mid-360-scaled.dae" scale="1.0 1.0 1.0"/>
+        </geometry>
+      </visual>
+    </xacro:if>
     <visual>
       <origin xyz="0 0 -0.035" rpy="0 0 0"/>
       <geometry>

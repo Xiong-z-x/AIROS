@@ -20,10 +20,30 @@ def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     assert "DeclareLaunchArgument('world', default_value='single_floor_lab')" in launch_text
     assert "advanced_indoor_ramp.sdf" in launch_text
     assert "physical_dynamic_obstacles" in launch_text
+    assert "open_source_scene_assets" in launch_text
+    assert "robot_visual_profile" in launch_text
+    assert "os.path.dirname(pkg_sim)" in launch_text
+    assert "os.path.dirname(pkg_desc)" in launch_text
     assert "moving_pedestrian" in world_text
     assert "inspection_cart_dynamic" in world_text
     assert "triggered-publisher" in world_text
     assert "ramp_main" in world_text
+
+
+def test_open_source_reference_assets_are_installed_and_licensed() -> None:
+    sim_cmake = _read_text('src/airos_sim/CMakeLists.txt')
+    building_model = _read_text('src/airos_sim/models/open_source_building/model.sdf')
+    robot_urdf = _read_text(
+        'src/airos_go2w_description/urdf/go2w_nav_eq.urdf.xacro'
+    )
+    license_text = _read_text('docs/third_party_3d_dog_navi_ros2_AFL-3.0_LICENSE')
+
+    assert 'DIRECTORY config launch models worlds' in sim_cmake
+    assert 'Building.dae' in building_model
+    assert 'open_source_go2w_reference/base.dae' in robot_urdf
+    assert 'open_source_go2w_reference/${' in robot_urdf
+    assert 'open_source_go2w_reference/mid-360-scaled.dae' in robot_urdf
+    assert 'Academic Free License' in license_text
 
 
 def test_advanced_world_has_matching_nav_map_and_missions() -> None:
@@ -62,7 +82,11 @@ def test_clean_runner_can_pass_world_map_route_and_planner_profile() -> None:
     assert "parser.add_argument('--world'" in runner_text
     assert "'--map'" in runner_text
     assert "parser.add_argument('--planner-profile'" in runner_text
+    assert "parser.add_argument('--open-source-scene-assets'" in runner_text
+    assert "parser.add_argument('--robot-visual-profile'" in runner_text
     assert "world:={args.world}" in runner_text
+    assert "open_source_scene_assets:=" in runner_text
+    assert "robot_visual_profile:={args.robot_visual_profile}" in runner_text
     assert "map:={args.map}" in runner_text
     assert "planner_profile:={args.planner_profile}" in runner_text
     assert "use_route:=true" in runner_text

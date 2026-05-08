@@ -79,3 +79,6 @@ How it is used here:
   `/cloud_registered`, `/Laser_map`, `/odom`, and `/cmd_vel`.
 - The current AIROS implementation does not vendor the full hardware Livox
   driver or PCT/ego planner runtime.
+- AIROS vendors only selected AFL-3.0 visual assets from this reference:
+  `Building.dae` plus Go2W body, wheel, and Mid360 meshes. These are optional
+  display assets and do not replace the verified wheel-control collision model.

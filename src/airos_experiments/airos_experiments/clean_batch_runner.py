@@ -223,6 +223,8 @@ def main() -> None:
     )
     parser.add_argument('--dynamic-obstacles', action='store_true')
     parser.add_argument('--physical-dynamic-obstacles', action='store_true')
+    parser.add_argument('--open-source-scene-assets', action='store_true')
+    parser.add_argument('--robot-visual-profile', default='analytic')
     parser.add_argument('--gui', action='store_true')
     parser.add_argument('--rviz', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
@@ -293,6 +295,9 @@ def main() -> None:
                     f'{str(args.dynamic_obstacles).lower()}',
                     'physical_dynamic_obstacles:='
                     f'{str(args.physical_dynamic_obstacles).lower()}',
+                    'open_source_scene_assets:='
+                    f'{str(args.open_source_scene_assets).lower()}',
+                    f'robot_visual_profile:={args.robot_visual_profile}',
                     f'dynamic_obstacle_seed:={mission.dynamic_obstacle_seed}',
                 ],
                 sim_log,

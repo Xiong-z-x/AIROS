@@ -23,3 +23,4 @@
 - 修复 `livox_custom_bridge` Ctrl-C 关停二次 shutdown；最终 launch 关停时该进程 cleanly exited。
 - 修复 runtime 清理脚本：补杀 `static_transform_publisher`，并停止 ROS daemon 清理残留 graph 缓存。
 - 最终验证通过：`colcon build --symlink-install --packages-select airos_experiments airos_nav airos_sim fast_lio livox_ros_driver2`；`python3 -m pytest ...` 32 passed；`git diff --check` 通过。
+- 补齐完成度审计弱项：导入 `ypat999/3d_dog_navi_ros2` 的 AFL 3.0 Building / Go2W / Mid360 视觉资产为可选 profile，保留当前等效体碰撞和控制链。

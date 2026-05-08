@@ -11,6 +11,10 @@ research entry for advanced planning comparison.
   can be selected without deleting the baseline.
 - `advanced_indoor_ramp.sdf` and `advanced_indoor_ramp_route.geojson` provide a
   more complex scene and route-constrained test surface.
+- `open_source_scene_assets:=true` overlays the AFL-3.0 Building mesh from
+  `ypat999/3d_dog_navi_ros2` as a visual-only scene asset.
+- `robot_visual_profile:=reference_mesh` overlays AFL-3.0 Go2W body, wheel, and
+  Mid360 meshes on the current verified navigation-equivalent robot.
 
 ## PCT-planner boundary
 
@@ -38,5 +42,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   route_graph:=src/airos_nav/routes/advanced_indoor_ramp_route.geojson \
   planner_profile:=research \
   physical_dynamic_obstacles:=true \
+  open_source_scene_assets:=true \
+  robot_visual_profile:=reference_mesh \
   sensor_source:=native
 ```

@@ -2,11 +2,13 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import xacro
 
 
-def generate_launch_description():
+def _launch_setup(context, *args, **kwargs):
     pkg_share = get_package_share_directory('airos_go2w_description')
     xacro_file = os.path.join(pkg_share, 'urdf', 'go2w_nav_eq.urdf.xacro')
     rviz_config = os.path.join(pkg_share, 'rviz', 'model.rviz')
@@ -18,7 +20,12 @@ def generate_launch_description():
 
     robot_description = xacro.process_file(
         xacro_file,
-        mappings={'controller_config': controller_yaml},
+        mappings={
+            'controller_config': controller_yaml,
+            'visual_profile': LaunchConfiguration('visual_profile').perform(
+                context
+            ),
+        },
     ).toxml()
 
     robot_state_publisher = Node(
@@ -45,8 +52,15 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription([
+    return [
         robot_state_publisher,
         joint_state_publisher_gui,
         rviz,
+    ]
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument('visual_profile', default_value='analytic'),
+        OpaqueFunction(function=_launch_setup),
     ])

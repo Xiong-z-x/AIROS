@@ -35,6 +35,7 @@
 
 - 新增 `src/airos_sim/worlds/advanced_indoor_ramp.sdf`，包含复杂室内结构、坡道视觉/碰撞模型、`moving_pedestrian` 和 `inspection_cart_dynamic` Gazebo 动态模型。
 - `sim.launch.py` 新增 `world:=single_floor_lab|advanced_indoor_ramp` 和 `physical_dynamic_obstacles:=true|false`。
+- `sim.launch.py` 新增 `open_source_scene_assets:=true|false` 和 `robot_visual_profile:=analytic|reference_mesh`，用于可选开源 Building/Go2W 视觉资产。
 - 新增 `src/airos_nav/maps/advanced_indoor_ramp.yaml/.pgm`、`src/airos_nav/routes/advanced_indoor_ramp_route.geojson`、`src/airos_experiments/missions/advanced_indoor_ramp_missions.yaml`。
 - `nav.launch.py` 新增 `planner_profile:=baseline|research`，research profile 使用 `nav2_research_profile.yaml`。
 - `run_clean_nav_batch` 新增 `--world`、`--map`、`--route-graph`、`--planner-profile`、`--physical-dynamic-obstacles`，可用于高级场景 batch。

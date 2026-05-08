@@ -31,3 +31,4 @@
 - `world_map_generator.py` 能从本仓库 SDF 的 box/cylinder collision 生成 Nav2 2D seed map，因此高级场景采用本地 SDF 生成法，避免直接复制 Garden world 后无法生成匹配地图。
 - 本机 Gazebo Fortress 安装了 `ignition-gazebo-triggered-publisher-system` 和 `ignition-gazebo-velocity-control-system`，可用于 Gazebo 物理动态障碍。
 - `3d_dog_navi_ros2` 的 Go2W 模型文件和 Building mesh 可作为长期视觉参考；直接复制整包会引入 Garden、CHAMP、多包控制栈和自定义 Livox 插件，短期风险过高。
+- 已采用受控导入：只复制 AFL 3.0 许可的 Building mesh、Go2W body/wheel/Mid360 mesh 和 license 文本，作为可选视觉层；不迁入 Garden/CHAMP 控制栈。

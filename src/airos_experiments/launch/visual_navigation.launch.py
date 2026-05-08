@@ -41,6 +41,10 @@ def generate_launch_description():
             'physical_dynamic_obstacles': LaunchConfiguration(
                 'physical_dynamic_obstacles'
             ),
+            'open_source_scene_assets': LaunchConfiguration(
+                'open_source_scene_assets'
+            ),
+            'robot_visual_profile': LaunchConfiguration('robot_visual_profile'),
             'dynamic_obstacle_seed': LaunchConfiguration(
                 'dynamic_obstacle_seed'
             ),
@@ -108,6 +112,8 @@ def generate_launch_description():
         DeclareLaunchArgument('planner_profile', default_value='baseline'),
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
+        DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
+        DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='1'),
         DeclareLaunchArgument('log_level', default_value='warn'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),

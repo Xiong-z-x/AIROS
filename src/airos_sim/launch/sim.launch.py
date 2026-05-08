@@ -64,6 +64,17 @@ def _gazebo_actions(world_file: str, gui: bool, rendering_mode: str):
     return GroupAction(scoped=True, actions=actions)
 
 
+def _resource_path_with(existing_value: str, *paths: str) -> str:
+    entries = []
+    for path in paths:
+        if path and path not in entries:
+            entries.append(path)
+    for path in existing_value.split(os.pathsep):
+        if path and path not in entries:
+            entries.append(path)
+    return os.pathsep.join(entries)
+
+
 def _launch_setup(context, *args, **kwargs):
     pkg_sim = get_package_share_directory('airos_sim')
     pkg_desc = get_package_share_directory('airos_go2w_description')
@@ -88,6 +99,16 @@ def _launch_setup(context, *args, **kwargs):
         LaunchConfiguration('physical_dynamic_obstacles').perform(context).lower()
         in {'true', '1', 'yes'}
     )
+    open_source_scene_assets = (
+        LaunchConfiguration('open_source_scene_assets').perform(context).lower()
+        in {'true', '1', 'yes'}
+    )
+    robot_visual_profile = LaunchConfiguration('robot_visual_profile').perform(context)
+    if robot_visual_profile not in {'analytic', 'reference_mesh'}:
+        raise RuntimeError(
+            "robot_visual_profile must be 'analytic' or 'reference_mesh', "
+            f"got {robot_visual_profile!r}"
+        )
     sensor_source = LaunchConfiguration('sensor_source').perform(context).lower()
     if sensor_source not in {'native', 'emulated'}:
         raise RuntimeError(
@@ -119,7 +140,10 @@ def _launch_setup(context, *args, **kwargs):
 
     robot_description = xacro.process_file(
         xacro_file,
-        mappings={'controller_config': controller_yaml},
+        mappings={
+            'controller_config': controller_yaml,
+            'visual_profile': robot_visual_profile,
+        },
     ).toxml()
 
     bridge_specs = []
@@ -152,6 +176,42 @@ def _launch_setup(context, *args, **kwargs):
             bridge_remaps.extend(['--ros-args', '-r', f'{gz_topic_name}:={ros_topic_name}'])
 
     gazebo = _gazebo_actions(world_file, gui, gazebo_rendering_mode)
+    gz_resource_path = _resource_path_with(
+        os.environ.get('GZ_SIM_RESOURCE_PATH', ''),
+        pkg_sim,
+        pkg_desc,
+        os.path.dirname(pkg_sim),
+        os.path.dirname(pkg_desc),
+    )
+    ign_resource_path = _resource_path_with(
+        os.environ.get('IGN_GAZEBO_RESOURCE_PATH', ''),
+        pkg_sim,
+        pkg_desc,
+        os.path.dirname(pkg_sim),
+        os.path.dirname(pkg_desc),
+    )
+
+    spawn_open_source_building = Node(
+        condition=IfCondition(LaunchConfiguration('open_source_scene_assets')),
+        package='ros_gz_sim',
+        executable='create',
+        output='screen',
+        arguments=[
+            '-name', 'open_source_building_reference',
+            '-file', os.path.join(
+                pkg_sim,
+                'models',
+                'open_source_building',
+                'model.sdf',
+            ),
+            '-x', '-7.5',
+            '-y', '5.5',
+            '-z', '0.02',
+            '-R', '0.0',
+            '-P', '0.0',
+            '-Y', '0.0',
+        ],
+    )
 
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -301,9 +361,21 @@ def _launch_setup(context, *args, **kwargs):
         )
 
     return [
+        SetEnvironmentVariable(
+            name='GZ_SIM_RESOURCE_PATH',
+            value=gz_resource_path,
+        ),
+        SetEnvironmentVariable(
+            name='IGN_GAZEBO_RESOURCE_PATH',
+            value=ign_resource_path,
+        ),
         gazebo,
         robot_state_publisher,
         TimerAction(period=2.0, actions=[spawn_robot]),
+        TimerAction(
+            period=2.5,
+            actions=[spawn_open_source_building] if open_source_scene_assets else [],
+        ),
         TimerAction(period=3.0, actions=[bridge]),
         TimerAction(period=4.0, actions=[control]),
         TimerAction(
@@ -323,6 +395,8 @@ def generate_launch_description():
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
+        DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
+        DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='0'),
         DeclareLaunchArgument('pointcloud', default_value='true'),
         DeclareLaunchArgument('pointcloud_registered', default_value='true'),

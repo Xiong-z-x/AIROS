@@ -284,6 +284,9 @@ ros2 action send_goal /navigate_to_pose \
 - `advanced_indoor_ramp` adds a larger indoor scene with ramp geometry,
   matching Nav2 seed map, route graph, missions, and Gazebo physical moving
   obstacles.
+- `open_source_scene_assets:=true` and `robot_visual_profile:=reference_mesh`
+  add optional AFL-3.0 Building / Go2W reference meshes from
+  `ypat999/3d_dog_navi_ros2`.
 - `planner_profile:=research` starts a separate Nav2 research profile using
   MPPI controller settings while the original baseline profile remains
   selectable.
@@ -299,8 +302,8 @@ ros2 action send_goal /navigate_to_pose \
   hardware driver.
 - Full PCT-planner and reinforcement-learning planners are documented as
   research targets, not promoted to the stable runtime.
-- No full Unitree low-level legged controller, CHAMP gait, or official Go2W
-  hardware interface.
+- Optional Go2W reference meshes are visual-only. There is still no full Unitree
+  low-level legged controller, CHAMP gait, or official Go2W hardware interface.
 - FAST-LIO2 localization is connected to Nav2 in the external-localization
   visual launch through a bridge that publishes dynamic `map -> odom`. The
   stable visual launch still keeps the static `map -> odom` chain as the
