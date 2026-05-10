@@ -200,7 +200,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('use_route', default_value='true'),
         DeclareLaunchArgument('planner_profile', default_value='baseline'),
-        DeclareLaunchArgument('dynamic_obstacles', default_value='true'),
+        DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
         DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),

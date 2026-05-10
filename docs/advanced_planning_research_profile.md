@@ -33,7 +33,8 @@ research entry for advanced planning comparison.
   DAE is scaled to millimeter units in URDF so it does not hide the robot in
   Gazebo.
 - `pointcloud_colorizer` republishes `/Laser_map` as `/Laser_map_colored` with
-  height-based RGB colors for RViz inspection.
+  structural SLAM-map colors: gray floor, green ramps, amber decks, and
+  red/purple high structures, plus subtle XY texture for surface readability.
 
 ## PCT-planner boundary
 
@@ -101,8 +102,8 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   planner_profile:=research \
   terrain_planner:=true \
-  dynamic_obstacles:=true \
-  physical_dynamic_obstacles:=true \
+  dynamic_obstacles:=false \
+  physical_dynamic_obstacles:=false \
   open_source_scene_assets:=true \
   robot_visual_profile:=reference_mesh \
   sensor_source:=native \
@@ -111,10 +112,12 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
 
 RViz displays to inspect:
 
-- `/Laser_map_colored`: height-colored FAST-LIO2 map cloud.
+- `/Laser_map_colored`: structural-color FAST-LIO2 map cloud.
 - `/cloud_registered`: current registered LiDAR cloud.
 - `/terrain_traversability_cloud`: floor/ramp/deck surfaces used by the terrain
   planner.
 - `/pct_path`: terrain-aware cross-level path sent as Nav2 waypoints.
-- `/dynamic_obstacles/markers`: software dynamic obstacle overlay. Gazebo
-  physical dynamic obstacles are triggered with `physical_dynamic_obstacles:=true`.
+- `/dynamic_obstacles/markers`: software dynamic obstacle overlay. It is hidden
+  by default; enable it explicitly only when working on the dynamic-obstacle
+  module. Gazebo physical dynamic obstacles are triggered with
+  `physical_dynamic_obstacles:=true`.

@@ -329,7 +329,7 @@ Implemented fix:
   cylinder surfaces from SDF collision geometry.
 - The ramp, floor, and mezzanine deck now enter `/livox/lidar_points`, the
   Livox `CustomMsg` bridge, FAST-LIO2, `/cloud_registered`, `/Laser_map`, and
-  the RViz colorized `/Laser_map_colored` display when
+  the RViz structural-color `/Laser_map_colored` display when
   `sensor_source:=emulated` is used.
 - `terrain_pct_planner` parses the same traversable SDF surfaces, builds a
   height-aware terrain graph, publishes `/terrain_traversability_cloud` and
@@ -338,11 +338,14 @@ Implemented fix:
 Dynamic obstacle visibility:
 
 - `visual_fast_lio_navigation.launch.py` exposes
-  `dynamic_obstacles:=true|false` and defaults the visual demo to `true`.
+  `dynamic_obstacles:=true|false` and now defaults the visual demo to `false`.
 - In native sensor mode a lightweight marker-only scan emulator publishes
   `/dynamic_obstacles/markers` without taking over `/scan`.
 - Gazebo physical moving obstacles are still controlled separately by
   `physical_dynamic_obstacles:=true`.
+- The module is intentionally off by default because the current software marker
+  overlay does not necessarily correspond to visible Gazebo moving bodies. Treat
+  it as a later dynamic-obstacle task, not part of the default SLAM demo.
 
 Current command for the most stable dense terrain-cloud demo on WSL2:
 
@@ -357,7 +360,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   sensor_source:=emulated \
   terrain_planner:=true \
-  dynamic_obstacles:=true \
+  dynamic_obstacles:=false \
   colorized_pointcloud:=true
 ```
 
@@ -375,8 +378,8 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   sensor_source:=native \
   gazebo_rendering_mode:=hardware \
   terrain_planner:=true \
-  dynamic_obstacles:=true \
-  physical_dynamic_obstacles:=true
+  dynamic_obstacles:=false \
+  physical_dynamic_obstacles:=false
 ```
 
 2026-05-10 WSL native LiDAR test result:

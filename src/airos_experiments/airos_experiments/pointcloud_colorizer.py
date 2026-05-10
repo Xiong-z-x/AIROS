@@ -24,18 +24,72 @@ def _pack_rgb_float(red: int, green: int, blue: int) -> float:
     return struct.unpack('f', struct.pack('I', rgb_uint32))[0]
 
 
+def _scale_rgb(
+    color: tuple[int, int, int],
+    factor: float,
+) -> tuple[int, int, int]:
+    return (
+        int(_clamp(color[0] * factor, 0, 255)),
+        int(_clamp(color[1] * factor, 0, 255)),
+        int(_clamp(color[2] * factor, 0, 255)),
+    )
+
+
+def _surface_texture(x: float, y: float) -> float:
+    grid = int(math.floor((x + 100.0) * 1.15))
+    grid += int(math.floor((y + 100.0) * 1.15))
+    checker = 1.0 if grid % 2 == 0 else 0.0
+    wave = 0.5 + 0.5 * math.sin(1.35 * x) * math.cos(1.35 * y)
+    return 0.82 + 0.18 * (0.68 * checker + 0.32 * wave)
+
+
 def _height_rgb(z: float, min_z: float, max_z: float) -> tuple[int, int, int]:
+    return _slam_map_rgb(0.0, 0.0, z, min_z, max_z)
+
+
+def _slam_map_rgb(
+    x: float,
+    y: float,
+    z: float,
+    min_z: float,
+    max_z: float,
+) -> tuple[int, int, int]:
     if max_z <= min_z:
         return 255, 255, 255
-    t = _clamp((z - min_z) / (max_z - min_z), 0.0, 1.0)
-    if t < 0.33:
-        k = t / 0.33
-        return int(40 * (1.0 - k) + 30 * k), int(120 * k), 255
-    if t < 0.66:
-        k = (t - 0.33) / 0.33
-        return int(30 * (1.0 - k) + 255 * k), int(120 + 120 * k), int(255 * (1.0 - k))
-    k = (t - 0.66) / 0.34
-    return 255, int(240 * (1.0 - k) + 60 * k), int(40 * k)
+
+    z = _clamp(z, min_z, max_z)
+    texture = _surface_texture(x, y)
+    if z < 0.08:
+        base = (150, 158, 160)
+    elif z < 0.55:
+        k = (z - 0.08) / 0.47
+        base = (
+            int(36 * (1.0 - k) + 90 * k),
+            int(178 * (1.0 - k) + 224 * k),
+            int(118 * (1.0 - k) + 96 * k),
+        )
+    elif z < 0.95:
+        k = (z - 0.55) / 0.40
+        base = (
+            int(214 * (1.0 - k) + 252 * k),
+            int(164 * (1.0 - k) + 204 * k),
+            int(48 * (1.0 - k) + 64 * k),
+        )
+    elif z < 1.60:
+        k = (z - 0.95) / 0.65
+        base = (
+            int(204 * (1.0 - k) + 246 * k),
+            int(82 * (1.0 - k) + 96 * k),
+            int(222 * (1.0 - k) + 96 * k),
+        )
+    else:
+        k = _clamp((z - 1.60) / max(max_z - 1.60, 0.1), 0.0, 1.0)
+        base = (
+            255,
+            int(112 * (1.0 - k) + 54 * k),
+            int(70 * (1.0 - k) + 48 * k),
+        )
+    return _scale_rgb(base, texture)
 
 
 def colorize_points(
@@ -46,7 +100,13 @@ def colorize_points(
 ) -> list[tuple[float, float, float, float]]:
     colored: list[tuple[float, float, float, float]] = []
     for x, y, z in points:
-        red, green, blue = _height_rgb(float(z), min_z, max_z)
+        red, green, blue = _slam_map_rgb(
+            float(x),
+            float(y),
+            float(z),
+            min_z,
+            max_z,
+        )
         colored.append((float(x), float(y), float(z), _pack_rgb_float(red, green, blue)))
     return colored
 

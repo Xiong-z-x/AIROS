@@ -35,7 +35,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
-    assert "DeclareLaunchArgument('dynamic_obstacles', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
@@ -227,7 +227,7 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
         assert live_cloud['Topic']['Depth'] == 1
 
 
-def test_nav_rviz_shows_terrain_path_and_dynamic_obstacles() -> None:
+def test_nav_rviz_shows_terrain_path_and_hides_dynamic_obstacles_by_default() -> None:
     rviz_config = yaml.safe_load(_read_text('src/airos_nav/rviz/nav.rviz'))
     tools = rviz_config['Visualization Manager']['Tools']
     tool_classes = {tool['Class'] for tool in tools}
@@ -238,8 +238,9 @@ def test_nav_rviz_shows_terrain_path_and_dynamic_obstacles() -> None:
     assert 'nav2_rviz_plugins/GoalTool' not in tool_classes
     assert terrain_path['Enabled'] is True
     assert terrain_path['Topic']['Value'] == '/pct_path'
-    assert dynamic_obstacles['Enabled'] is True
+    assert dynamic_obstacles['Enabled'] is False
     assert dynamic_obstacles['Topic']['Value'] == '/dynamic_obstacles/markers'
+    assert dynamic_obstacles['Value'] is False
 
 
 def test_rotation_shim_over_rpp_commands_fit_safe_velocity_chain() -> None:

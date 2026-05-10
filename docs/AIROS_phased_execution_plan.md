@@ -573,7 +573,11 @@ slow moving cart
 temporary blocker near door
 ```
 
-Current implementation publishes `/dynamic_obstacles/markers` for RViz. It does not spawn Gazebo physical moving bodies; that is deferred until the renderer/sensor path is migrated or stabilized.
+Current implementation publishes `/dynamic_obstacles/markers` for RViz when
+explicitly enabled. It is off by default because the module still needs a
+Gazebo-visible physical-obstacle pass. It does not spawn Gazebo physical moving
+bodies; that is deferred until the renderer/sensor path is migrated or
+stabilized.
 
 - [ ] **Step 2: Configure collision_monitor**
 

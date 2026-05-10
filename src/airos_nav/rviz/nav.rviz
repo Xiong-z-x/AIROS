@@ -270,7 +270,7 @@ Visualization Manager:
         Value: /polygon_slowdown
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
+      Enabled: false
       Name: Dynamic Obstacles
       Topic:
         Depth: 5
@@ -278,7 +278,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /dynamic_obstacles/markers
-      Value: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 24; 26; 30

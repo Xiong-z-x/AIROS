@@ -27,7 +27,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
-        DeclareLaunchArgument('dynamic_obstacles', default_value='true'),
+        DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='1'),
         sim,
     ])
