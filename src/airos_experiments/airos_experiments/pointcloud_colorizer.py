@@ -51,6 +51,40 @@ def colorize_points(
     return colored
 
 
+def sample_xyz_points(
+    msg: PointCloud2,
+    *,
+    max_points: int,
+) -> list[tuple[float, float, float]]:
+    offsets = {field.name: field.offset for field in msg.fields}
+    if not {'x', 'y', 'z'}.issubset(offsets):
+        return []
+    point_step = int(msg.point_step)
+    total = int(msg.width) * int(msg.height)
+    if point_step <= 0 or total <= 0:
+        return []
+    stride = 1
+    if max_points > 0 and total > max_points:
+        stride = int(math.ceil(total / max_points))
+
+    endian = '>' if msg.is_bigendian else '<'
+    x_offset = offsets['x']
+    y_offset = offsets['y']
+    z_offset = offsets['z']
+    points: list[tuple[float, float, float]] = []
+    for index in range(0, total, stride):
+        base = index * point_step
+        try:
+            x = struct.unpack_from(endian + 'f', msg.data, base + x_offset)[0]
+            y = struct.unpack_from(endian + 'f', msg.data, base + y_offset)[0]
+            z = struct.unpack_from(endian + 'f', msg.data, base + z_offset)[0]
+        except struct.error:
+            break
+        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+            points.append((float(x), float(y), float(z)))
+    return points
+
+
 class PointCloudColorizer(Node):
     def __init__(self) -> None:
         super().__init__('pointcloud_colorizer')
@@ -69,7 +103,7 @@ class PointCloudColorizer(Node):
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
+            reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
         )
         publish_qos = QoSProfile(
@@ -85,21 +119,10 @@ class PointCloudColorizer(Node):
         )
 
     def _on_cloud(self, msg: PointCloud2) -> None:
-        point_count = max(1, msg.width * msg.height)
-        stride = 1
-        if self._max_points > 0 and point_count > self._max_points:
-            stride = int(math.ceil(point_count / self._max_points))
-
-        sampled_points: list[tuple[float, float, float]] = []
-        raw_points = point_cloud2.read_points(
+        sampled_points = sample_xyz_points(
             msg,
-            field_names=('x', 'y', 'z'),
-            skip_nans=True,
+            max_points=self._max_points,
         )
-        for index, point in enumerate(raw_points):
-            if index % stride != 0:
-                continue
-            sampled_points.append((float(point[0]), float(point[1]), float(point[2])))
 
         colored_points = colorize_points(
             sampled_points,

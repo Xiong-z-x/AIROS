@@ -20,82 +20,15 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 
 from airos_experiments.scan_emulator import (
-    CircleObstacle,
     OdomAnchor,
     Pose2D,
-    RectObstacle,
-    _load_obstacles,
     _map_pose_from_anchor,
     _pose_from_initial_pose,
     _pose_from_odom,
 )
+from airos_experiments.sdf_geometry import sample_world_cloud
 
 CloudPoint = tuple[float, float, float, float]
-
-
-def _axis_samples(
-    center: float,
-    half_extent: float,
-    spacing: float,
-) -> list[float]:
-    length = max(half_extent * 2.0, spacing)
-    count = max(int(math.ceil(length / spacing)), 1)
-    start = center - half_extent
-    return [start + min(i * spacing, length) for i in range(count + 1)]
-
-
-def _z_samples(height: float, spacing: float) -> list[float]:
-    top = min(max(height, 0.2), 2.2)
-    count = max(int(math.ceil(top / spacing)), 1)
-    return [min(i * spacing, top) for i in range(count + 1)]
-
-
-def _rect_points(obstacle: RectObstacle, spacing: float) -> list[CloudPoint]:
-    points: list[CloudPoint] = []
-    min_x = obstacle.cx - obstacle.hx
-    max_x = obstacle.cx + obstacle.hx
-    min_y = obstacle.cy - obstacle.hy
-    max_y = obstacle.cy + obstacle.hy
-    for z in _z_samples(obstacle.height, spacing):
-        for x in _axis_samples(obstacle.cx, obstacle.hx, spacing):
-            points.append((x, min_y, z, 80.0))
-            points.append((x, max_y, z, 80.0))
-        for y in _axis_samples(obstacle.cy, obstacle.hy, spacing):
-            points.append((min_x, y, z, 80.0))
-            points.append((max_x, y, z, 80.0))
-    return points
-
-
-def _circle_points(
-    obstacle: CircleObstacle,
-    spacing: float,
-) -> list[CloudPoint]:
-    points: list[CloudPoint] = []
-    circumference = 2.0 * math.pi * obstacle.radius
-    count = max(int(math.ceil(circumference / spacing)), 12)
-    for z in _z_samples(obstacle.height, spacing):
-        for index in range(count):
-            angle = 2.0 * math.pi * index / count
-            points.append((
-                obstacle.cx + math.cos(angle) * obstacle.radius,
-                obstacle.cy + math.sin(angle) * obstacle.radius,
-                z,
-                95.0,
-            ))
-    return points
-
-
-def _obstacles_to_cloud(
-    obstacles: list[RectObstacle | CircleObstacle],
-    spacing: float,
-) -> list[CloudPoint]:
-    points: list[CloudPoint] = []
-    for obstacle in obstacles:
-        if isinstance(obstacle, RectObstacle):
-            points.extend(_rect_points(obstacle, spacing))
-        else:
-            points.extend(_circle_points(obstacle, spacing))
-    return points
 
 
 class PointCloudEmulator(Node):
@@ -125,13 +58,12 @@ class PointCloudEmulator(Node):
         self.declare_parameter('max_live_points', 5000)
 
         world_file = Path(str(self.get_parameter('world_file').value))
-        obstacles = (
-            _load_obstacles(world_file)
+        spacing = float(self.get_parameter('point_spacing').value)
+        self._map_points = (
+            sample_world_cloud(world_file, spacing)
             if world_file.as_posix()
             else []
         )
-        spacing = float(self.get_parameter('point_spacing').value)
-        self._map_points = _obstacles_to_cloud(obstacles, spacing)
 
         self._world_frame = str(self.get_parameter('world_frame').value)
         self._lidar_frame = str(self.get_parameter('lidar_frame').value)

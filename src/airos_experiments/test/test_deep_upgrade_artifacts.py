@@ -27,6 +27,9 @@ def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     assert "open_source_scene_assets" in launch_text
     assert "robot_visual_profile" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
+    assert "dynamic_obstacle_marker_emulator" in launch_text
+    assert "'scan_topic': '/scan_dynamic_overlay'" in launch_text
+    assert "'point_spacing': 0.22" in launch_text
     assert "os.path.dirname(pkg_sim)" in launch_text
     assert "os.path.dirname(pkg_desc)" in launch_text
     assert "moving_pedestrian" in world_text
@@ -106,6 +109,7 @@ def test_nav_launch_exposes_planner_profile_and_advanced_defaults() -> None:
     assert 'movement_time_allowance: 25.0' in profile_text
     assert 'max_path_occupancy_ratio: 0.20' in profile_text
     assert 'generate_advanced_planner_candidates' in setup_text
+    assert 'terrain_pct_planner' in setup_text
     assert 'airos_advanced_planner_candidate.v1' in candidate_text
     assert 'research_surrogate_not_trained_runtime' in candidate_text
     assert 'PCT-planner' in readme_text

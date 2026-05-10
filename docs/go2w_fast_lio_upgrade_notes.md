@@ -295,7 +295,9 @@ ros2 action send_goal /navigate_to_pose \
 
 ## Remaining Limitations
 
-- No Gazebo GPU LiDAR in the current WSL2/Fortress/OGRE baseline.
+- WSL2/Fortress native Gazebo LiDAR is usable only in the software-stable
+  rendering mode on this machine. Hardware OpenGL mode still crashes in OGRE2,
+  so it is not the stable default for this project.
 - `/livox/lidar` is a Livox `CustomMsg` converted from the Gazebo native
   `/livox/lidar_points` point cloud. It is not real hardware packet timing.
 - `src/livox_ros_driver2` is message-only compatibility, not a real Livox
@@ -308,3 +310,82 @@ ros2 action send_goal /navigate_to_pose \
   visual launch through a bridge that publishes dynamic `map -> odom`. The
   stable visual launch still keeps the static `map -> odom` chain as the
   fallback.
+
+## 2026-05-10 Terrain Cloud and Cross-Level Planning Update
+
+Root cause of the missing ramp cloud:
+
+- The previous `pointcloud_emulator` used the 2D scan obstacle parser and only
+  sampled vertical obstacle side walls.
+- Traversable horizontal or sloped surfaces such as `floor`,
+  `wide_access_ramp`, and `mezzanine_deck_visual` were not sampled, so
+  FAST-LIO2 could not map the ramp even when `/livox/lidar` was publishing.
+
+Implemented fix:
+
+- `sdf_geometry.py` parses SDF model/link/collision poses, including roll,
+  pitch, and yaw.
+- `pointcloud_emulator` now samples box top surfaces, side surfaces, and
+  cylinder surfaces from SDF collision geometry.
+- The ramp, floor, and mezzanine deck now enter `/livox/lidar_points`, the
+  Livox `CustomMsg` bridge, FAST-LIO2, `/cloud_registered`, `/Laser_map`, and
+  the RViz colorized `/Laser_map_colored` display when
+  `sensor_source:=emulated` is used.
+- `terrain_pct_planner` parses the same traversable SDF surfaces, builds a
+  height-aware terrain graph, publishes `/terrain_traversability_cloud` and
+  `/pct_path`, then sends terrain-guided `NavigateThroughPoses` waypoints.
+
+Dynamic obstacle visibility:
+
+- `visual_fast_lio_navigation.launch.py` exposes
+  `dynamic_obstacles:=true|false` and defaults the visual demo to `true`.
+- In native sensor mode a lightweight marker-only scan emulator publishes
+  `/dynamic_obstacles/markers` without taking over `/scan`.
+- Gazebo physical moving obstacles are still controlled separately by
+  `physical_dynamic_obstacles:=true`.
+
+Current command for the most stable dense terrain-cloud demo on WSL2:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
+  gui:=true \
+  rviz:=true \
+  world:=realistic_multilevel_ramp \
+  map:=src/airos_nav/maps/realistic_multilevel_ramp.yaml \
+  route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
+  sensor_source:=emulated \
+  terrain_planner:=true \
+  dynamic_obstacles:=true \
+  colorized_pointcloud:=true
+```
+
+Current command for trying Gazebo native GPU LiDAR on WSL2:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
+  gui:=true \
+  rviz:=true \
+  world:=realistic_multilevel_ramp \
+  map:=src/airos_nav/maps/realistic_multilevel_ramp.yaml \
+  route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
+  sensor_source:=native \
+  gazebo_rendering_mode:=hardware \
+  terrain_planner:=true \
+  dynamic_obstacles:=true \
+  physical_dynamic_obstacles:=true
+```
+
+2026-05-10 WSL native LiDAR test result:
+
+- `sensor_source:=native gazebo_rendering_mode:=hardware` crashed Gazebo with
+  `Ogre::UnimplementedException` in `GL3PlusTextureGpu::copyTo`.
+- `sensor_source:=native gazebo_rendering_mode:=wsl_stable` did not crash in
+  headless sim smoke. It published `/scan` at about 9.9 Hz and
+  `/livox/lidar_points` as a 720 x 16 `PointCloud2`.
+- Therefore the stable WSL path remains `sensor_source:=emulated` for the
+  dense FAST-LIO terrain demo, while native LiDAR is selectable for raw-sensor
+  experiments under `wsl_stable`.

@@ -261,6 +261,7 @@ def _launch_setup(context, *args, **kwargs):
     scan_emulator = Node(
         package='airos_experiments',
         executable='scan_emulator',
+        name='scan_emulator',
         output='screen',
         parameters=[{
             'use_sim_time': True,
@@ -271,6 +272,24 @@ def _launch_setup(context, *args, **kwargs):
             'sample_count': 360,
             'publish_rate_hz': 6.0,
             'dynamic_obstacles_enabled': dynamic_obstacles,
+            'dynamic_obstacle_seed': dynamic_obstacle_seed,
+        }],
+    )
+
+    dynamic_marker_emulator = Node(
+        package='airos_experiments',
+        executable='scan_emulator',
+        name='dynamic_obstacle_marker_emulator',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'world_file': world_file,
+            'odom_topic': '/odom',
+            'scan_topic': '/scan_dynamic_overlay',
+            'scan_frame': 'lidar_link',
+            'sample_count': 72,
+            'publish_rate_hz': 2.0,
+            'dynamic_obstacles_enabled': True,
             'dynamic_obstacle_seed': dynamic_obstacle_seed,
         }],
     )
@@ -293,8 +312,8 @@ def _launch_setup(context, *args, **kwargs):
             'publish_rate_hz': 3.0,
             'map_publish_rate_hz': 0.25,
             'range_max': 12.0,
-            'point_spacing': 0.35,
-            'max_live_points': 3200,
+            'point_spacing': 0.22,
+            'max_live_points': 7000,
         }],
     )
 
@@ -337,6 +356,8 @@ def _launch_setup(context, *args, **kwargs):
         delayed_sensor_nodes.append(scan_emulator)
         if pointcloud_enabled:
             delayed_sensor_nodes.append(pointcloud_emulator)
+    elif dynamic_obstacles:
+        delayed_sensor_nodes.append(dynamic_marker_emulator)
     if pointcloud_enabled:
         delayed_sensor_nodes.append(livox_custom_bridge)
     if pointcloud_enabled:

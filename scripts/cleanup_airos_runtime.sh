@@ -13,6 +13,8 @@ patterns=(
   'livox_custom_bridge'
   'scan_emulator'
   'pointcloud_emulator'
+  'airos_experiments/pointcloud_colorizer'
+  'airos_experiments/terrain_pct_planner'
   'nav2_lifecycle_manager/lifecycle_manager'
   'nav2_map_server/map_server'
   'nav2_amcl/amcl'
@@ -44,7 +46,7 @@ if command -v ros2 >/dev/null 2>&1; then
   ros2 daemon stop >/dev/null 2>&1 || true
 fi
 
-leftover_pattern='ign gazebo|parameter_bridge|ros2 launch airos|fastlio_mapping|static_transform_publisher|imu_republisher|livox_custom_bridge|scan_emulator|pointcloud_emulator|nav2_|rviz2'
+leftover_pattern='ign gazebo|parameter_bridge|ros2 launch airos|fastlio_mapping|static_transform_publisher|imu_republisher|livox_custom_bridge|scan_emulator|pointcloud_emulator|airos_experiments/pointcloud_colorizer|airos_experiments/terrain_pct_planner|nav2_|rviz2'
 if pgrep -af "$leftover_pattern" >/tmp/airos_runtime_leftovers.txt; then
   cat /tmp/airos_runtime_leftovers.txt
   exit 1

@@ -15,13 +15,15 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    pkg_nav = get_package_share_directory('airos_nav')
+    pkg_sim = get_package_share_directory('airos_sim')
     sim_launch = os.path.join(
-        get_package_share_directory('airos_sim'),
+        pkg_sim,
         'launch',
         'sim.launch.py',
     )
     nav_launch = os.path.join(
-        get_package_share_directory('airos_nav'),
+        pkg_nav,
         'launch',
         'nav.launch.py',
     )
@@ -31,7 +33,7 @@ def generate_launch_description():
         'airos_sim.yaml',
     )
     rviz_config = os.path.join(
-        get_package_share_directory('airos_nav'),
+        pkg_nav,
         'rviz',
         'nav.rviz',
     )
@@ -42,7 +44,7 @@ def generate_launch_description():
             'gui': LaunchConfiguration('gui'),
             'rviz': 'false',
             'world': LaunchConfiguration('world'),
-            'dynamic_obstacles': 'false',
+            'dynamic_obstacles': LaunchConfiguration('dynamic_obstacles'),
             'physical_dynamic_obstacles': LaunchConfiguration(
                 'physical_dynamic_obstacles'
             ),
@@ -151,28 +153,54 @@ def generate_launch_description():
         }],
     )
 
+    terrain_planner = Node(
+        condition=IfCondition(LaunchConfiguration('terrain_planner')),
+        package='airos_experiments',
+        executable='terrain_pct_planner',
+        name='terrain_pct_planner',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'world_file': LaunchConfiguration('terrain_world_file'),
+            'world_frame': 'map',
+            'odom_topic': '/odom',
+            'goal_topic': '/goal_pose',
+            'path_topic': '/pct_path',
+            'terrain_cloud_topic': '/terrain_traversability_cloud',
+            'grid_resolution': 0.40,
+            'robot_radius': 0.35,
+            'support_margin': 0.45,
+            'max_slope_grade': 0.58,
+            'max_step_height': 0.36,
+            'goal_z_policy': 'highest',
+            'send_nav2_goals': LaunchConfiguration('terrain_send_nav2_goals'),
+            'waypoint_spacing': 0.90,
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
-        DeclareLaunchArgument('world', default_value='single_floor_lab'),
+        DeclareLaunchArgument('world', default_value='realistic_multilevel_ramp'),
         DeclareLaunchArgument(
             'map',
             default_value=os.path.join(
-                get_package_share_directory('airos_nav'),
+                pkg_nav,
                 'maps',
-                'single_floor_lab.yaml',
+                'realistic_multilevel_ramp.yaml',
             ),
         ),
         DeclareLaunchArgument(
             'route_graph',
             default_value=os.path.join(
-                get_package_share_directory('airos_nav'),
+                pkg_nav,
                 'routes',
-                'single_floor_lab_route.geojson',
+                'realistic_multilevel_ramp_route.geojson',
             ),
         ),
         DeclareLaunchArgument('use_route', default_value='true'),
         DeclareLaunchArgument('planner_profile', default_value='baseline'),
+        DeclareLaunchArgument('dynamic_obstacles', default_value='true'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
         DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
@@ -180,6 +208,16 @@ def generate_launch_description():
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('colorized_pointcloud', default_value='true'),
+        DeclareLaunchArgument('terrain_planner', default_value='true'),
+        DeclareLaunchArgument(
+            'terrain_world_file',
+            default_value=os.path.join(
+                pkg_sim,
+                'worlds',
+                'realistic_multilevel_ramp.sdf',
+            ),
+        ),
+        DeclareLaunchArgument('terrain_send_nav2_goals', default_value='true'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_z', default_value='0.26'),
@@ -189,5 +227,6 @@ def generate_launch_description():
         TimerAction(period=15.0, actions=[nav]),
         TimerAction(period=24.0, actions=[lifecycle_activator]),
         TimerAction(period=26.0, actions=[pointcloud_colorizer]),
+        TimerAction(period=28.0, actions=[terrain_planner]),
         TimerAction(period=32.0, actions=[rviz]),
     ])

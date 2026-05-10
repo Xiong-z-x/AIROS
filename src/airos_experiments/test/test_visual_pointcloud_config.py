@@ -33,6 +33,9 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
+    assert "executable='terrain_pct_planner'" in launch_text
+    assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('dynamic_obstacles', default_value='true')" in launch_text
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
@@ -187,6 +190,9 @@ def test_visual_navigation_does_not_publish_simulated_laser_map() -> None:
 def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     laser_map = _rviz_display('PointCloud Map /Laser_map')
     colorized_map = _rviz_display('Colorized PointCloud Map /Laser_map_colored')
+    terrain_cloud = _rviz_display(
+        'Terrain Traversability Cloud /terrain_traversability_cloud'
+    )
     registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
     livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
@@ -201,6 +207,11 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     assert colorized_map['Topic']['Value'] == '/Laser_map_colored'
     assert colorized_map['Decay Time'] == 0
 
+    assert terrain_cloud['Enabled'] is True
+    assert terrain_cloud['Value'] is True
+    assert terrain_cloud['Topic']['Value'] == '/terrain_traversability_cloud'
+    assert terrain_cloud['Topic']['Durability Policy'] == 'Transient Local'
+
     assert registered_cloud['Enabled'] is True
     assert registered_cloud['Value'] is True
     assert registered_cloud['Color Transformer'] == 'AxisColor'
@@ -214,6 +225,21 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
         assert live_cloud['Style'] == 'Points'
         assert live_cloud['Decay Time'] == 0
         assert live_cloud['Topic']['Depth'] == 1
+
+
+def test_nav_rviz_shows_terrain_path_and_dynamic_obstacles() -> None:
+    rviz_config = yaml.safe_load(_read_text('src/airos_nav/rviz/nav.rviz'))
+    tools = rviz_config['Visualization Manager']['Tools']
+    tool_classes = {tool['Class'] for tool in tools}
+    terrain_path = _rviz_display('Terrain PCT Path /pct_path')
+    dynamic_obstacles = _rviz_display('Dynamic Obstacles')
+
+    assert 'rviz_default_plugins/SetGoal' in tool_classes
+    assert 'nav2_rviz_plugins/GoalTool' not in tool_classes
+    assert terrain_path['Enabled'] is True
+    assert terrain_path['Topic']['Value'] == '/pct_path'
+    assert dynamic_obstacles['Enabled'] is True
+    assert dynamic_obstacles['Topic']['Value'] == '/dynamic_obstacles/markers'
 
 
 def test_rotation_shim_over_rpp_commands_fit_safe_velocity_chain() -> None:

@@ -9,6 +9,14 @@ research entry for advanced planning comparison.
 - `nav2_research_profile.yaml` is an experimental Nav2 profile for comparison.
 - `nav.launch.py` exposes `planner_profile:=baseline|research` so the profile
   can be selected without deleting the baseline.
+- `terrain_pct_planner` is a ROS 2 runtime terrain planner. It parses the SDF
+  collision geometry, samples floor/ramp/deck traversable surfaces, runs a
+  PCT-style height-aware graph search, publishes `/pct_path`, and sends
+  terrain-guided `NavigateThroughPoses` waypoints to Nav2.
+- `pointcloud_emulator` now samples full 3D collision surfaces rather than only
+  obstacle side walls. The ramp top, floor, and mezzanine deck therefore enter
+  `/livox/lidar_points`, FAST-LIO2 input, `/cloud_registered`, and
+  `/Laser_map`.
 - `generate_advanced_planner_candidates` exports deterministic route candidates
   for `nav2_baseline_route`, `pct_style_risk_weighted_route`, and
   `rl_safety_shield_waypoints`. This gives the PCT/RL research path a concrete
@@ -30,20 +38,23 @@ research entry for advanced planning comparison.
 ## PCT-planner boundary
 
 PCT-planner is the correct research direction for multi-floor point-cloud
-terrain planning, but it is not directly promoted to the stable runtime in this
-repository. The referenced `3d_dog_navi_ros2` project targets Gazebo Garden and
-contains a large planner stack with CUDA/GTSAM-style dependencies. AIROS keeps
-that path as an experimental integration target, not as a claimed completed
-feature.
+terrain planning. The directly checked ROS 2 fork still needs CUDA toolkit,
+CuPy, Open3D, NumPy/SciPy compatibility work, and native planner dependencies
+before it can be built as a stable package in this WSL2 Humble workspace.
+AIROS therefore implements a compatible runtime bridge first: terrain surface
+sampling plus height-aware graph search and Nav2 waypoint execution. This is a
+PCT-style terrain planner, not a claim that upstream PCT-planner CUDA
+tomography is fully installed.
 
 Current repository state:
 
-- Keeps PCT as a research integration target.
+- Keeps upstream PCT-planner as a research integration target.
+- Provides `terrain_pct_planner` as the current runnable ROS 2 terrain planner.
 - Provides a route-graph and map-backed candidate generator with risk-weighted
   scoring so PCT-like terrain costs can be compared against the Nav2 baseline.
 - Marks PCT-style candidates as `research_surrogate_not_trained_runtime`.
-- Does not claim terrain voxel search, CUDA acceleration, or full multi-floor
-  kinodynamic planning as completed runtime.
+- Does not claim CUDA tomography, learned traversability, or full kinodynamic
+  legged planning as completed runtime.
 
 ## 强化学习边界
 
@@ -89,9 +100,21 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   map:=src/airos_nav/maps/realistic_multilevel_ramp.yaml \
   route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   planner_profile:=research \
+  terrain_planner:=true \
+  dynamic_obstacles:=true \
   physical_dynamic_obstacles:=true \
   open_source_scene_assets:=true \
   robot_visual_profile:=reference_mesh \
   sensor_source:=native \
   colorized_pointcloud:=true
 ```
+
+RViz displays to inspect:
+
+- `/Laser_map_colored`: height-colored FAST-LIO2 map cloud.
+- `/cloud_registered`: current registered LiDAR cloud.
+- `/terrain_traversability_cloud`: floor/ramp/deck surfaces used by the terrain
+  planner.
+- `/pct_path`: terrain-aware cross-level path sent as Nav2 waypoints.
+- `/dynamic_obstacles/markers`: software dynamic obstacle overlay. Gazebo
+  physical dynamic obstacles are triggered with `physical_dynamic_obstacles:=true`.
