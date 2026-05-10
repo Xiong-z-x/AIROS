@@ -22,6 +22,13 @@
       <shadows>false</shadows>
     </scene>
 
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>7.8 -8.0 4.4 0 0.55 2.38</pose>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
     <light name="sun" type="directional">
       <cast_shadows>false</cast_shadows>
       <pose>0 0 12 0 0 0</pose>

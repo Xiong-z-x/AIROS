@@ -19,6 +19,7 @@ setup(
         ('share/' + package_name + '/missions', [
             'missions/advanced_indoor_ramp_missions.yaml',
             'missions/large_complex_go2w_missions.yaml',
+            'missions/realistic_multilevel_ramp_missions.yaml',
             'missions/single_floor_lab_missions.yaml',
         ]),
         ('share/' + package_name + '/scripts', [
@@ -49,6 +50,7 @@ setup(
             'lifecycle_activator = airos_experiments.lifecycle_activator:main',
             'livox_custom_bridge = airos_experiments.livox_custom_bridge:main',
             'nav_chain_smoke_probe = airos_experiments.nav_chain_smoke_probe:main',
+            'pointcloud_colorizer = airos_experiments.pointcloud_colorizer:main',
             'pointcloud_emulator = airos_experiments.pointcloud_emulator:main',
             'rviz2_safe = airos_experiments.rviz2_safe:main',
             'verify_route_graph = airos_experiments.route_graph_verifier:main',

@@ -85,6 +85,7 @@ def _launch_setup(context, *args, **kwargs):
     world_files = {
         'single_floor_lab': 'single_floor_lab.sdf',
         'advanced_indoor_ramp': 'advanced_indoor_ramp.sdf',
+        'realistic_multilevel_ramp': 'realistic_multilevel_ramp.sdf',
     }
     if world_name not in world_files:
         raise RuntimeError(
@@ -131,6 +132,10 @@ def _launch_setup(context, *args, **kwargs):
         in {'true', '1', 'yes'}
     )
     gazebo_rendering_mode = LaunchConfiguration('gazebo_rendering_mode').perform(context)
+    robot_spawn_x = LaunchConfiguration('robot_spawn_x').perform(context)
+    robot_spawn_y = LaunchConfiguration('robot_spawn_y').perform(context)
+    robot_spawn_z = LaunchConfiguration('robot_spawn_z').perform(context)
+    robot_spawn_yaw = LaunchConfiguration('robot_spawn_yaw').perform(context)
 
     world_file = os.path.join(pkg_sim, 'worlds', world_files[world_name])
     bridge_config = os.path.join(pkg_sim, 'config', 'ros_gz_bridge.yaml')
@@ -230,12 +235,12 @@ def _launch_setup(context, *args, **kwargs):
         arguments=[
             '-name', 'go2w_nav_eq',
             '-param', 'robot_description',
-            '-x', '0.0',
-            '-y', '0.0',
-            '-z', '0.24',
+            '-x', robot_spawn_x,
+            '-y', robot_spawn_y,
+            '-z', robot_spawn_z,
             '-R', '0.0',
             '-P', '0.0',
-            '-Y', '0.0',
+            '-Y', robot_spawn_yaw,
         ],
         parameters=[{'robot_description': robot_description}],
     )
@@ -402,5 +407,9 @@ def generate_launch_description():
         DeclareLaunchArgument('pointcloud_registered', default_value='true'),
         DeclareLaunchArgument('pointcloud_map', default_value='true'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
+        DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
+        DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),
+        DeclareLaunchArgument('robot_spawn_z', default_value='0.26'),
+        DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0'),
         OpaqueFunction(function=_launch_setup),
     ])

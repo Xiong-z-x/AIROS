@@ -31,6 +31,8 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'localization': 'static'" in launch_text
     assert 'fast_lio_localization_bridge' not in launch_text
     assert 'static_map_to_odom' not in launch_text
+    assert "executable='pointcloud_colorizer'" in launch_text
+    assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
@@ -142,10 +144,12 @@ def test_sim_launch_defaults_gazebo_to_wsl_stable_rendering() -> None:
         "DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable')"
         in launch_text
     )
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert (
         "'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode')"
         in visual_launch_text
     )
+    assert "'robot_spawn_z': LaunchConfiguration('robot_spawn_z')" in visual_launch_text
     assert "'LIBGL_ALWAYS_SOFTWARE': '1'" in launch_text
     assert "'GALLIUM_DRIVER': 'llvmpipe'" in launch_text
     assert "'QT_QPA_PLATFORM': 'xcb'" in launch_text
@@ -176,16 +180,31 @@ def test_visual_navigation_does_not_publish_simulated_laser_map() -> None:
     assert "'pointcloud_map': 'false'" in launch_text
 
 
-def test_nav_rviz_keeps_live_clouds_single_frame_and_disabled() -> None:
+def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     laser_map = _rviz_display('PointCloud Map /Laser_map')
+    colorized_map = _rviz_display('Colorized PointCloud Map /Laser_map_colored')
     registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
     livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
-    assert laser_map['Enabled'] is True
+    assert laser_map['Enabled'] is False
+    assert laser_map['Value'] is False
     assert laser_map['Style'] == 'Points'
     assert laser_map['Decay Time'] == 0
 
-    for live_cloud in (registered_cloud, livox_cloud):
+    assert colorized_map['Enabled'] is True
+    assert colorized_map['Value'] is True
+    assert colorized_map['Color Transformer'] == 'RGB8'
+    assert colorized_map['Topic']['Value'] == '/Laser_map_colored'
+    assert colorized_map['Decay Time'] == 0
+
+    assert registered_cloud['Enabled'] is True
+    assert registered_cloud['Value'] is True
+    assert registered_cloud['Color Transformer'] == 'AxisColor'
+    assert registered_cloud['Style'] == 'Points'
+    assert registered_cloud['Decay Time'] == 0
+    assert registered_cloud['Topic']['Depth'] == 1
+
+    for live_cloud in (livox_cloud,):
         assert live_cloud['Enabled'] is False
         assert live_cloud['Value'] is False
         assert live_cloud['Style'] == 'Points'

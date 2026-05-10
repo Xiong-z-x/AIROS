@@ -55,6 +55,10 @@ def generate_launch_description():
             'pointcloud_registered': 'false',
             'pointcloud_map': 'false',
             'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode'),
+            'robot_spawn_x': LaunchConfiguration('robot_spawn_x'),
+            'robot_spawn_y': LaunchConfiguration('robot_spawn_y'),
+            'robot_spawn_z': LaunchConfiguration('robot_spawn_z'),
+            'robot_spawn_yaw': LaunchConfiguration('robot_spawn_yaw'),
         },
         actions=[
             IncludeLaunchDescription(
@@ -131,6 +135,22 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    pointcloud_colorizer = Node(
+        condition=IfCondition(LaunchConfiguration('colorized_pointcloud')),
+        package='airos_experiments',
+        executable='pointcloud_colorizer',
+        name='laser_map_colorizer',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'input_topic': '/Laser_map',
+            'output_topic': '/Laser_map_colored',
+            'min_z': -0.40,
+            'max_z': 2.20,
+            'max_points': 90000,
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('rviz', default_value='true'),
@@ -159,9 +179,15 @@ def generate_launch_description():
         DeclareLaunchArgument('log_level', default_value='warn'),
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
+        DeclareLaunchArgument('colorized_pointcloud', default_value='true'),
+        DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
+        DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),
+        DeclareLaunchArgument('robot_spawn_z', default_value='0.26'),
+        DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0'),
         sim,
         TimerAction(period=10.0, actions=[map_to_fast_lio_map, fast_lio]),
         TimerAction(period=15.0, actions=[nav]),
         TimerAction(period=24.0, actions=[lifecycle_activator]),
+        TimerAction(period=26.0, actions=[pointcloud_colorizer]),
         TimerAction(period=32.0, actions=[rviz]),
     ])

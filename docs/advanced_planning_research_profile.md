@@ -14,11 +14,18 @@ research entry for advanced planning comparison.
   `rl_safety_shield_waypoints`. This gives the PCT/RL research path a concrete
   input/output contract without claiming a trained planner runtime.
 - `advanced_indoor_ramp.sdf` and `advanced_indoor_ramp_route.geojson` provide a
-  more complex scene and route-constrained test surface.
+  stair/ramp-focused scene and route-constrained test surface.
+- `realistic_multilevel_ramp.sdf` adds a larger indoor multi-level ramp scene
+  with shelves, workbenches, glass partitions, columns, crates, and triggerable
+  physical dynamic obstacles.
 - `open_source_scene_assets:=true` overlays the AFL-3.0 Building mesh from
   `ypat999/3d_dog_navi_ros2` as a visual-only scene asset.
 - `robot_visual_profile:=reference_mesh` overlays AFL-3.0 Go2W body, wheel, and
-  Mid360 meshes on the current verified navigation-equivalent robot.
+  Mid360 meshes on the current verified navigation-equivalent robot. The Mid360
+  DAE is scaled to millimeter units in URDF so it does not hide the robot in
+  Gazebo.
+- `pointcloud_colorizer` republishes `/Laser_map` as `/Laser_map_colored` with
+  height-based RGB colors for RViz inspection.
 
 ## PCT-planner boundary
 
@@ -55,8 +62,8 @@ Current repository state:
 
 ```bash
 ros2 run airos_experiments generate_advanced_planner_candidates \
-  --map src/airos_nav/maps/advanced_indoor_ramp.yaml \
-  --route-graph src/airos_nav/routes/advanced_indoor_ramp_route.geojson \
+  --map src/airos_nav/maps/realistic_multilevel_ramp.yaml \
+  --route-graph src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   --start-id 1 \
   --goal-id 3 \
   --output log/advanced_planner_candidates.json
@@ -78,12 +85,13 @@ for regression checks and future replacement by real PCT/RL planner backends.
 ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   gui:=true \
   rviz:=true \
-  world:=advanced_indoor_ramp \
-  map:=src/airos_nav/maps/advanced_indoor_ramp.yaml \
-  route_graph:=src/airos_nav/routes/advanced_indoor_ramp_route.geojson \
+  world:=realistic_multilevel_ramp \
+  map:=src/airos_nav/maps/realistic_multilevel_ramp.yaml \
+  route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   planner_profile:=research \
   physical_dynamic_obstacles:=true \
   open_source_scene_assets:=true \
   robot_visual_profile:=reference_mesh \
-  sensor_source:=native
+  sensor_source:=native \
+  colorized_pointcloud:=true
 ```

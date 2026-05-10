@@ -13,19 +13,25 @@
 # limitations under the License.
 
 from ament_flake8.main import main_with_errors
+from pathlib import Path
 import pytest
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.flake8
 @pytest.mark.linter
 def test_flake8():
+    root = _repo_root()
     rc, errors = main_with_errors(argv=[
-        'src/airos_control',
-        'src/airos_experiments',
-        'src/airos_go2w_description',
-        'src/airos_nav',
-        'src/airos_sim',
-        'src/airos_slam',
+        str(root / 'src/airos_control'),
+        str(root / 'src/airos_experiments'),
+        str(root / 'src/airos_go2w_description'),
+        str(root / 'src/airos_nav'),
+        str(root / 'src/airos_sim'),
+        str(root / 'src/airos_slam'),
     ])
     assert rc == 0, \
         'Found %d code style errors / warnings:\n' % len(errors) + \

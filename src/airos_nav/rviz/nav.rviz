@@ -71,7 +71,7 @@ Visualization Manager:
       Color: 120; 210; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Name: PointCloud Map /Laser_map
       Position Transformer: XYZ
       Selectable: true
@@ -85,6 +85,33 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /Laser_map
       Use Fixed Frame: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 2.2
+        Min Value: -0.4
+        Value: true
+      Axis: Z
+      Channel Name: rgb
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: true
+      Name: Colorized PointCloud Map /Laser_map_colored
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 4
+      Size (m): 0.06
+      Style: Flat Squares
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /Laser_map_colored
+      Use Fixed Frame: true
       Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
@@ -96,9 +123,9 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 245; 140
-      Color Transformer: Intensity
+      Color Transformer: AxisColor
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Name: Registered Cloud /cloud_registered
       Position Transformer: XYZ
       Selectable: true
@@ -112,7 +139,7 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /cloud_registered
       Use Fixed Frame: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -123,7 +150,7 @@ Visualization Manager:
       Channel Name: intensity
       Class: rviz_default_plugins/PointCloud2
       Color: 80; 255; 180
-      Color Transformer: Intensity
+      Color Transformer: AxisColor
       Decay Time: 0
       Enabled: false
       Name: Livox Raw Cloud /livox/lidar_points

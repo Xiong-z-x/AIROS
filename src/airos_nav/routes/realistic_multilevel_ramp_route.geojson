@@ -1,0 +1,87 @@
+{
+  "type": "FeatureCollection",
+  "name": "realistic_multilevel_ramp_route",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::3857"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": 1, "frame": "map", "metadata": {"label": "ramp_lower_start"}},
+      "geometry": {"type": "Point", "coordinates": [0.0, 0.0]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 2, "frame": "map", "metadata": {"label": "mezzanine_entry"}},
+      "geometry": {"type": "Point", "coordinates": [0.4, 3.6]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 3, "frame": "map", "metadata": {"label": "upper_lab_goal"}},
+      "geometry": {"type": "Point", "coordinates": [7.2, 7.4]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 4, "frame": "map", "metadata": {"label": "west_loading_bay"}},
+      "geometry": {"type": "Point", "coordinates": [-8.2, 5.2]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 5, "frame": "map", "metadata": {"label": "south_service_aisle"}},
+      "geometry": {"type": "Point", "coordinates": [7.2, -7.4]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 6, "frame": "map", "metadata": {"label": "dynamic_crossing"}},
+      "geometry": {"type": "Point", "coordinates": [0.0, -2.8]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 7, "frame": "map", "metadata": {"label": "east_bypass"}},
+      "geometry": {"type": "Point", "coordinates": [8.4, -2.8]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 301, "startid": 1, "endid": 2, "metadata": {"speed_limit": 0.20, "risk": "wide_ramp"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [0.2, 1.8], [0.4, 3.6]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 302, "startid": 2, "endid": 3, "metadata": {"speed_limit": 0.24, "risk": "upper_deck_obstacles"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.4, 3.6], [2.8, 6.2], [7.2, 7.4]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 303, "startid": 1, "endid": 6, "metadata": {"speed_limit": 0.20, "risk": "pedestrian_crossing"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [0.0, -2.8]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 304, "startid": 6, "endid": 7, "metadata": {"speed_limit": 0.22, "risk": "inspection_cart_crossing"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, -2.8], [4.0, -2.8], [8.4, -2.8]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 305, "startid": 7, "endid": 3, "metadata": {"speed_limit": 0.24, "risk": "long_bypass_to_upper_lab"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[8.4, -2.8], [9.2, 1.8], [8.6, 6.6], [7.2, 7.4]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 306, "startid": 1, "endid": 4, "metadata": {"speed_limit": 0.22, "risk": "west_storage"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, 0.0], [-3.2, 1.4], [-8.2, 5.2]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 307, "startid": 6, "endid": 5, "metadata": {"speed_limit": 0.24, "risk": "long_south_service_run"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[0.0, -2.8], [3.4, -6.6], [7.2, -7.4]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 308, "startid": 4, "endid": 2, "metadata": {"speed_limit": 0.20, "risk": "storage_to_ramp"}},
+      "geometry": {"type": "MultiLineString", "coordinates": [[[-8.2, 5.2], [-4.2, 4.2], [0.4, 3.6]]]}
+    }
+  ]
+}

@@ -16,18 +16,26 @@ def _read_text(relative_path: str) -> str:
 def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     launch_text = _read_text('src/airos_sim/launch/sim.launch.py')
     world_text = _read_text('src/airos_sim/worlds/advanced_indoor_ramp.sdf')
+    realistic_world_text = _read_text(
+        'src/airos_sim/worlds/realistic_multilevel_ramp.sdf'
+    )
 
     assert "DeclareLaunchArgument('world', default_value='single_floor_lab')" in launch_text
     assert "advanced_indoor_ramp.sdf" in launch_text
+    assert "realistic_multilevel_ramp.sdf" in launch_text
     assert "physical_dynamic_obstacles" in launch_text
     assert "open_source_scene_assets" in launch_text
     assert "robot_visual_profile" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "os.path.dirname(pkg_sim)" in launch_text
     assert "os.path.dirname(pkg_desc)" in launch_text
     assert "moving_pedestrian" in world_text
     assert "inspection_cart_dynamic" in world_text
     assert "triggered-publisher" in world_text
     assert "ramp_main" in world_text
+    assert "wide_access_ramp" in realistic_world_text
+    assert "mezzanine_deck_visual" in realistic_world_text
+    assert "/airos/realistic_multilevel_ramp/start_dynamic_obstacles" in realistic_world_text
 
 
 def test_open_source_reference_assets_are_installed_and_licensed() -> None:
@@ -43,6 +51,7 @@ def test_open_source_reference_assets_are_installed_and_licensed() -> None:
     assert 'open_source_go2w_reference/base.dae' in robot_urdf
     assert 'open_source_go2w_reference/${' in robot_urdf
     assert 'open_source_go2w_reference/mid-360-scaled.dae' in robot_urdf
+    assert 'scale="0.001 0.001 0.001"' in robot_urdf
     assert 'Academic Free License' in license_text
 
 
@@ -61,6 +70,26 @@ def test_advanced_world_has_matching_nav_map_and_missions() -> None:
     assert 'advanced_indoor_ramp_route' in route_text
 
 
+def test_realistic_multilevel_world_has_matching_nav_artifacts() -> None:
+    map_yaml = yaml.safe_load(
+        _read_text('src/airos_nav/maps/realistic_multilevel_ramp.yaml')
+    )
+    mission_text = _read_text(
+        'src/airos_experiments/missions/realistic_multilevel_ramp_missions.yaml'
+    )
+    route_text = _read_text(
+        'src/airos_nav/routes/realistic_multilevel_ramp_route.geojson'
+    )
+    setup_text = _read_text('src/airos_experiments/setup.py')
+
+    assert map_yaml['image'] == 'realistic_multilevel_ramp.pgm'
+    assert map_yaml['resolution'] == 0.05
+    assert 'multilevel_upper_lab_long_goal' in mission_text
+    assert 'dynamic_crossing_to_south_service' in mission_text
+    assert 'realistic_multilevel_ramp_route' in route_text
+    assert 'realistic_multilevel_ramp_missions.yaml' in setup_text
+
+
 def test_nav_launch_exposes_planner_profile_and_advanced_defaults() -> None:
     nav_launch = _read_text('src/airos_nav/launch/nav.launch.py')
     profile_text = _read_text('src/airos_nav/config/nav2_research_profile.yaml')
@@ -74,6 +103,8 @@ def test_nav_launch_exposes_planner_profile_and_advanced_defaults() -> None:
     assert "nav2_research_profile.yaml" in nav_launch
     assert "planner_profile" in nav_launch
     assert 'nav2_mppi_controller::MPPIController' in profile_text
+    assert 'movement_time_allowance: 25.0' in profile_text
+    assert 'max_path_occupancy_ratio: 0.20' in profile_text
     assert 'generate_advanced_planner_candidates' in setup_text
     assert 'airos_advanced_planner_candidate.v1' in candidate_text
     assert 'research_surrogate_not_trained_runtime' in candidate_text

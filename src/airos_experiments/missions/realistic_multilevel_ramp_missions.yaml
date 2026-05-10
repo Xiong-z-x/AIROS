@@ -1,0 +1,22 @@
+missions:
+  - mission_id: multilevel_upper_lab_long_goal
+    start_pose: [0.0, 0.0, 0.0]
+    goal_pose: [7.2, 7.4, 0.2]
+    route_id: multilevel_upper_lab_long_goal
+    dynamic_obstacle_seed: 21
+    speed_limit: 0.22
+    expected_timeout_sec: 150.0
+  - mission_id: dynamic_crossing_to_south_service
+    start_pose: [0.0, 0.0, -1.57]
+    goal_pose: [7.2, -7.4, -0.2]
+    route_id: dynamic_crossing_to_south_service
+    dynamic_obstacle_seed: 22
+    speed_limit: 0.24
+    expected_timeout_sec: 150.0
+  - mission_id: west_storage_to_mezzanine
+    start_pose: [0.0, 0.0, 2.5]
+    goal_pose: [-8.2, 5.2, 2.9]
+    route_id: west_storage_to_mezzanine
+    dynamic_obstacle_seed: 23
+    speed_limit: 0.20
+    expected_timeout_sec: 130.0
