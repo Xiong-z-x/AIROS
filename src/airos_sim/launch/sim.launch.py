@@ -161,7 +161,7 @@ def _launch_setup(context, *args, **kwargs):
         ros_topic_name = str(entry.get('ros_topic_name', gz_topic_name))
         if (
             not native_sensor_enabled
-            and ros_topic_name in {'/scan', '/livox/lidar'}
+            and ros_topic_name in {'/scan', '/livox/lidar', '/livox/lidar_points'}
         ):
             continue
         if direction == 'GZ_TO_ROS':
@@ -283,7 +283,7 @@ def _launch_setup(context, *args, **kwargs):
             'use_sim_time': True,
             'world_file': world_file,
             'odom_topic': '/odom',
-            'lidar_topic': '/livox/lidar',
+            'lidar_topic': '/livox/lidar_points',
             'registered_cloud_topic': '/cloud_registered',
             'map_cloud_topic': '/Laser_map',
             'publish_registered_cloud': pointcloud_registered,
@@ -337,7 +337,7 @@ def _launch_setup(context, *args, **kwargs):
         delayed_sensor_nodes.append(scan_emulator)
         if pointcloud_enabled:
             delayed_sensor_nodes.append(pointcloud_emulator)
-    if native_sensor_enabled and pointcloud_enabled:
+    if pointcloud_enabled:
         delayed_sensor_nodes.append(livox_custom_bridge)
     if pointcloud_enabled:
         delayed_sensor_nodes.append(livox_imu_relay)

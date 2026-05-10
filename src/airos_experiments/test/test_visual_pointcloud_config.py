@@ -46,7 +46,11 @@ def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
     assert "native_sensor_enabled = sensor_source == 'native'" in launch_text
     assert "emulated_sensor_enabled = sensor_source == 'emulated'" in launch_text
     assert "not native_sensor_enabled" in launch_text
-    assert "ros_topic_name in {'/scan', '/livox/lidar'}" in launch_text
+    assert (
+        "ros_topic_name in {'/scan', '/livox/lidar', '/livox/lidar_points'}"
+        in launch_text
+    )
+    assert "'lidar_topic': '/livox/lidar_points'" in launch_text
     assert "'sensor_source': LaunchConfiguration('sensor_source')" in visual_launch_text
     assert "DeclareLaunchArgument('sensor_source', default_value='native')" in visual_launch_text
 

@@ -72,7 +72,13 @@ class PointCloudColorizer(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        self._publisher = self.create_publisher(PointCloud2, output_topic, qos)
+        publish_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self._publisher = self.create_publisher(PointCloud2, output_topic, publish_qos)
         self.create_subscription(PointCloud2, self._input_topic, self._on_cloud, qos)
         self.get_logger().info(
             f'colorizing point cloud {self._input_topic} -> {output_topic}'
