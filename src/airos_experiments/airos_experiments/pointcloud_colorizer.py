@@ -97,9 +97,13 @@ def colorize_points(
     *,
     min_z: float,
     max_z: float,
+    min_visible_z: float | None = None,
 ) -> list[tuple[float, float, float, float]]:
     colored: list[tuple[float, float, float, float]] = []
+    visible_floor = -math.inf if min_visible_z is None else min_visible_z
     for x, y, z in points:
+        if float(z) < visible_floor:
+            continue
         red, green, blue = _slam_map_rgb(
             float(x),
             float(y),
@@ -152,12 +156,16 @@ class PointCloudColorizer(Node):
         self.declare_parameter('output_topic', '/Laser_map_colored')
         self.declare_parameter('min_z', -0.40)
         self.declare_parameter('max_z', 2.20)
-        self.declare_parameter('max_points', 90000)
+        self.declare_parameter('min_visible_z', 0.08)
+        self.declare_parameter('max_points', 220000)
 
         self._input_topic = str(self.get_parameter('input_topic').value)
         output_topic = str(self.get_parameter('output_topic').value)
         self._min_z = float(self.get_parameter('min_z').value)
         self._max_z = float(self.get_parameter('max_z').value)
+        self._min_visible_z = float(
+            self.get_parameter('min_visible_z').value
+        )
         self._max_points = int(self.get_parameter('max_points').value)
 
         qos = QoSProfile(
@@ -188,6 +196,7 @@ class PointCloudColorizer(Node):
             sampled_points,
             min_z=self._min_z,
             max_z=self._max_z,
+            min_visible_z=self._min_visible_z,
         )
         fields = [
             PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),

@@ -56,6 +56,8 @@ def generate_launch_description():
             'pointcloud': 'true',
             'pointcloud_registered': 'false',
             'pointcloud_map': 'false',
+            'point_spacing': LaunchConfiguration('pointcloud_spacing'),
+            'max_live_points': LaunchConfiguration('max_live_points'),
             'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode'),
             'robot_spawn_x': LaunchConfiguration('robot_spawn_x'),
             'robot_spawn_y': LaunchConfiguration('robot_spawn_y'),
@@ -149,7 +151,8 @@ def generate_launch_description():
             'output_topic': '/Laser_map_colored',
             'min_z': -0.40,
             'max_z': 2.20,
-            'max_points': 90000,
+            'min_visible_z': 0.08,
+            'max_points': 220000,
         }],
     )
 
@@ -208,6 +211,8 @@ def generate_launch_description():
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('colorized_pointcloud', default_value='true'),
+        DeclareLaunchArgument('pointcloud_spacing', default_value='0.12'),
+        DeclareLaunchArgument('max_live_points', default_value='22000'),
         DeclareLaunchArgument('terrain_planner', default_value='true'),
         DeclareLaunchArgument(
             'terrain_world_file',

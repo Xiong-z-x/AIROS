@@ -29,7 +29,10 @@ def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "dynamic_obstacle_marker_emulator" in launch_text
     assert "'scan_topic': '/scan_dynamic_overlay'" in launch_text
-    assert "'point_spacing': 0.22" in launch_text
+    assert "DeclareLaunchArgument('point_spacing', default_value='0.12')" in launch_text
+    assert "DeclareLaunchArgument('max_live_points', default_value='22000')" in launch_text
+    assert "float(LaunchConfiguration('point_spacing').perform(context))" in launch_text
+    assert "int(LaunchConfiguration('max_live_points').perform(context))" in launch_text
     assert "os.path.dirname(pkg_sim)" in launch_text
     assert "os.path.dirname(pkg_desc)" in launch_text
     assert "moving_pedestrian" in world_text

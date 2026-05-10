@@ -33,9 +33,15 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('pointcloud_spacing', default_value='0.12')" in launch_text
+    assert "DeclareLaunchArgument('max_live_points', default_value='22000')" in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
+    assert "'point_spacing': LaunchConfiguration('pointcloud_spacing')" in launch_text
+    assert "'max_live_points': LaunchConfiguration('max_live_points')" in launch_text
+    assert "'min_visible_z': 0.08" in launch_text
+    assert "'max_points': 220000" in launch_text
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:

@@ -96,6 +96,8 @@ def _launch_setup(context, *args, **kwargs):
         LaunchConfiguration('dynamic_obstacles').perform(context).lower()
         in {'true', '1', 'yes'}
     )
+    point_spacing = float(LaunchConfiguration('point_spacing').perform(context))
+    max_live_points = int(LaunchConfiguration('max_live_points').perform(context))
     physical_dynamic_obstacles = (
         LaunchConfiguration('physical_dynamic_obstacles').perform(context).lower()
         in {'true', '1', 'yes'}
@@ -312,8 +314,8 @@ def _launch_setup(context, *args, **kwargs):
             'publish_rate_hz': 3.0,
             'map_publish_rate_hz': 0.25,
             'range_max': 12.0,
-            'point_spacing': 0.22,
-            'max_live_points': 7000,
+            'point_spacing': point_spacing,
+            'max_live_points': max_live_points,
         }],
     )
 
@@ -427,6 +429,8 @@ def generate_launch_description():
         DeclareLaunchArgument('pointcloud', default_value='true'),
         DeclareLaunchArgument('pointcloud_registered', default_value='true'),
         DeclareLaunchArgument('pointcloud_map', default_value='true'),
+        DeclareLaunchArgument('point_spacing', default_value='0.12'),
+        DeclareLaunchArgument('max_live_points', default_value='22000'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),

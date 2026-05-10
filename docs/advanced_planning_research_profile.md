@@ -35,6 +35,8 @@ research entry for advanced planning comparison.
 - `pointcloud_colorizer` republishes `/Laser_map` as `/Laser_map_colored` with
   structural SLAM-map colors: gray floor, green ramps, amber decks, and
   red/purple high structures, plus subtle XY texture for surface readability.
+  The visual demo filters the lowest ground layer from this colored map by
+  default so ramps, decks, walls, and obstacles remain legible.
 
 ## PCT-planner boundary
 
@@ -113,6 +115,8 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
 RViz displays to inspect:
 
 - `/Laser_map_colored`: structural-color FAST-LIO2 map cloud.
+  The default dense visual profile uses `pointcloud_spacing:=0.12` and hides
+  points below `z=0.08` in the colored map display.
 - `/cloud_registered`: current registered LiDAR cloud.
 - `/terrain_traversability_cloud`: floor/ramp/deck surfaces used by the terrain
   planner.

@@ -102,8 +102,8 @@ Visualization Manager:
       Name: Colorized PointCloud Map /Laser_map_colored
       Position Transformer: XYZ
       Selectable: true
-      Size (Pixels): 4
-      Size (m): 0.06
+      Size (Pixels): 5
+      Size (m): 0.09
       Style: Flat Squares
       Topic:
         Depth: 1

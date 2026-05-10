@@ -334,6 +334,10 @@ Implemented fix:
 - `terrain_pct_planner` parses the same traversable SDF surfaces, builds a
   height-aware terrain graph, publishes `/terrain_traversability_cloud` and
   `/pct_path`, then sends terrain-guided `NavigateThroughPoses` waypoints.
+- The default visual emulated cloud now uses `pointcloud_spacing:=0.12` and
+  keeps up to 22k live LiDAR points. `/Laser_map_colored` keeps up to 220k
+  sampled map points and hides points below `z=0.08` so the first-floor ground
+  does not dominate the SLAM-map view.
 
 Dynamic obstacle visibility:
 
@@ -360,6 +364,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   sensor_source:=emulated \
   terrain_planner:=true \
+  pointcloud_spacing:=0.12 \
   dynamic_obstacles:=false \
   colorized_pointcloud:=true
 ```

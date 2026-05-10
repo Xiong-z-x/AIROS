@@ -49,6 +49,20 @@ def test_colorize_points_keeps_xyz_and_adds_rgb_float() -> None:
     assert isinstance(colored[0][3], float)
 
 
+def test_colorize_points_can_hide_low_ground_layer() -> None:
+    colored = colorize_points(
+        [(0.0, 0.0, 0.0), (1.0, 1.0, 0.12), (2.0, 2.0, 0.70)],
+        min_z=-0.4,
+        max_z=2.2,
+        min_visible_z=0.08,
+    )
+
+    assert [point[:3] for point in colored] == [
+        (1.0, 1.0, 0.12),
+        (2.0, 2.0, 0.70),
+    ]
+
+
 def test_colorizer_publishes_reliable_for_rviz_compatibility() -> None:
     source = _read_text(
         'src/airos_experiments/airos_experiments/pointcloud_colorizer.py'
@@ -56,3 +70,4 @@ def test_colorizer_publishes_reliable_for_rviz_compatibility() -> None:
 
     assert 'publish_qos = QoSProfile' in source
     assert 'reliability=ReliabilityPolicy.RELIABLE' in source
+    assert "self.declare_parameter('min_visible_z', 0.08)" in source
