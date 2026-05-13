@@ -18,6 +18,9 @@ research entry for advanced planning comparison.
   `PointCloud2` into a height-aware terrain graph, publishes
   `/terrain_traversability_cloud`, and publishes `/pct_path` for connected
   traversable regions.
+- `slam_traversability_graph.py` owns the SLAM-cloud traversability conversion
+  and PCT-style graph construction. Unit tests cover floor -> ramp -> platform
+  routing and reject direct platform-edge drops to a lower floor.
 - `pointcloud_emulator` now samples full 3D collision surfaces rather than only
   obstacle side walls. The ramp top, floor, and mezzanine deck therefore enter
   `/livox/lidar_points`, FAST-LIO2 input, `/cloud_registered`, and
@@ -71,10 +74,18 @@ FAST-LIO2 map-planning boundary:
 - The SLAM-cloud terrain graph is a verified bridge from `/Laser_map` into the
   local PCT-style planner. It is not yet equivalent to upstream PCT-planner's
   full point-cloud traversability pipeline.
+- The graph builder is split out of `terrain_pct_planner`, so future FAST-LIO2
+  map segmentation and cross-level connector logic can evolve without touching
+  Nav2 action execution.
+- The visual FAST-LIO planner launch now uses `slam_min_cell_points:=2`,
+  `goal_z_policy:=adaptive`, and a 1.0 m goal snap limit. This keeps sparse
+  FAST-LIO clouds connected enough for same-level goals while rejecting goals
+  outside the currently mapped SLAM coverage instead of snapping to a wrong
+  floor or map boundary.
 - Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
   works. The cross-level path from the spawn area to high floors is not yet
-  accepted because high-elevation points can remain disconnected or classified
-  as non-traversable step structure in the raw SLAM-derived graph.
+  accepted because the current local FAST-LIO map does not yet cover and connect
+  the requested high-floor goal region from the spawn area.
 - Therefore the complete FAST-LIO2 SLAM -> cross-level planning -> motion
   closed loop remains a next upgrade task, not a completed claim.
 

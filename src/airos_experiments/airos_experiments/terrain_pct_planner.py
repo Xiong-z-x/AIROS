@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import heapq
 import math
-import struct
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -44,6 +42,10 @@ from airos_experiments.sdf_geometry import (
     load_collision_geometries,
     sample_box_top,
     terrain_intensity,
+)
+from airos_experiments.slam_traversability_graph import (
+    build_slam_graph_from_pointcloud,
+    build_slam_graph_from_points,
 )
 
 _ACTIVE_GOAL_STATUSES = {
@@ -148,75 +150,11 @@ def build_slam_terrain_graph_from_points(
     max_slope_grade: float = 0.55,
     max_step_height: float = 0.34,
     max_surface_transition_height: float = 0.12,
-    min_cell_points: int = 4,
+    min_cell_points: int = 2,
     vertical_layer_gap: float = 0.18,
 ) -> TerrainGraph:
-    if not points:
-        return TerrainGraph(nodes=[], adjacency=[], terrain_cloud=[])
-
-    bins: dict[tuple[int, int], list[tuple[float, float, float]]] = defaultdict(list)
-    for x, y, z in points:
-        bins[_bin_key(x, y, grid_resolution)].append((x, y, z))
-
-    nodes: list[TerrainNode] = []
-    for (bin_x, bin_y), cell_points in bins.items():
-        if len(cell_points) < max(1, min_cell_points):
-            continue
-        cell_points.sort(key=lambda point: point[2])
-        clusters: list[list[tuple[float, float, float]]] = []
-        current_cluster: list[tuple[float, float, float]] = [cell_points[0]]
-        for point in cell_points[1:]:
-            if abs(point[2] - current_cluster[-1][2]) <= max(0.01, vertical_layer_gap):
-                current_cluster.append(point)
-                continue
-            clusters.append(current_cluster)
-            current_cluster = [point]
-        clusters.append(current_cluster)
-
-        cell_center_x = bin_x * grid_resolution
-        cell_center_y = bin_y * grid_resolution
-        for cluster in clusters:
-            if len(cluster) < max(1, min_cell_points):
-                continue
-            xs = [point[0] for point in cluster]
-            ys = [point[1] for point in cluster]
-            zs = [point[2] for point in cluster]
-            mean_x = sum(xs) / len(xs)
-            mean_y = sum(ys) / len(ys)
-            mean_z = sum(zs) / len(zs)
-            local_x = mean_x - cell_center_x
-            local_y = mean_y - cell_center_y
-            half_x = max(abs(x - cell_center_x) for x in xs)
-            half_y = max(abs(y - cell_center_y) for y in ys)
-            node = TerrainNode(
-                index=len(nodes),
-                x=mean_x,
-                y=mean_y,
-                z=mean_z,
-                surface_label='slam_surface',
-                edge_margin=max(
-                    0.0,
-                    min(
-                        grid_resolution / 2.0 - abs(local_x),
-                        grid_resolution / 2.0 - abs(local_y),
-                    ),
-                ),
-                surface_local_x=local_x,
-                surface_local_y=local_y,
-                surface_half_x=max(half_x, grid_resolution / 4.0),
-                surface_half_y=max(half_y, grid_resolution / 4.0),
-                surface_width_axis='y',
-            )
-            nodes.append(node)
-
-    _classify_slam_surface_nodes(
-        nodes,
-        grid_resolution=grid_resolution,
-        max_slope_grade=max_slope_grade,
-        max_step_height=max_step_height,
-    )
-    adjacency = _build_adjacency(
-        nodes,
+    slam_graph = build_slam_graph_from_points(
+        points,
         grid_resolution=grid_resolution,
         max_slope_grade=max_slope_grade,
         max_step_height=max_step_height,
@@ -224,12 +162,10 @@ def build_slam_terrain_graph_from_points(
             max_surface_transition_height,
             max_step_height,
         ),
+        min_cell_points=min_cell_points,
+        vertical_layer_gap=vertical_layer_gap,
     )
-    terrain_cloud = [
-        (node.x, node.y, node.z, terrain_intensity(node.surface_label))
-        for node in nodes
-    ]
-    return TerrainGraph(nodes=nodes, adjacency=adjacency, terrain_cloud=terrain_cloud)
+    return _terrain_graph_from_slam_graph(slam_graph)
 
 
 def build_slam_terrain_graph_from_pointcloud(
@@ -240,124 +176,45 @@ def build_slam_terrain_graph_from_pointcloud(
     max_slope_grade: float = 0.55,
     max_step_height: float = 0.34,
     max_surface_transition_height: float = 0.12,
-    min_cell_points: int = 4,
+    min_cell_points: int = 2,
     vertical_layer_gap: float = 0.18,
     max_points: int = 180000,
 ) -> TerrainGraph:
-    points = _sample_xyz_points(msg, max_points=max_points)
-    return build_slam_terrain_graph_from_points(
-        points,
+    slam_graph = build_slam_graph_from_pointcloud(
+        msg,
         grid_resolution=grid_resolution,
-        robot_radius=robot_radius,
-        support_margin=support_margin,
         max_slope_grade=max_slope_grade,
         max_step_height=max_step_height,
         max_surface_transition_height=max_surface_transition_height,
         min_cell_points=min_cell_points,
         vertical_layer_gap=vertical_layer_gap,
+        max_points=max_points,
     )
+    return _terrain_graph_from_slam_graph(slam_graph)
 
 
-def _field_offsets(msg: PointCloud2) -> dict[str, int]:
-    return {field.name: field.offset for field in msg.fields}
-
-
-def _sample_xyz_points(
-    msg: PointCloud2,
-    *,
-    max_points: int,
-) -> list[tuple[float, float, float]]:
-    offsets = _field_offsets(msg)
-    if not {'x', 'y', 'z'}.issubset(offsets):
-        return []
-    point_step = int(msg.point_step)
-    total = int(msg.width) * int(msg.height)
-    if point_step <= 0 or total <= 0:
-        return []
-    stride = 1
-    if max_points > 0 and total > max_points:
-        stride = int(math.ceil(total / max_points))
-
-    endian = '>' if msg.is_bigendian else '<'
-    x_offset = offsets['x']
-    y_offset = offsets['y']
-    z_offset = offsets['z']
-    points: list[tuple[float, float, float]] = []
-    for index in range(0, total, stride):
-        base = index * point_step
-        try:
-            x = struct.unpack_from(endian + 'f', msg.data, base + x_offset)[0]
-            y = struct.unpack_from(endian + 'f', msg.data, base + y_offset)[0]
-            z = struct.unpack_from(endian + 'f', msg.data, base + z_offset)[0]
-        except struct.error:
-            break
-        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
-            points.append((float(x), float(y), float(z)))
-    return points
-
-
-def _classify_slam_surface_nodes(
-    nodes: list[TerrainNode],
-    grid_resolution: float,
-    max_slope_grade: float,
-    max_step_height: float,
-) -> None:
-    if not nodes:
-        return
-
-    bins: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for node in nodes:
-        bins[_bin_key(node.x, node.y, grid_resolution)].append(node.index)
-
-    search_radius = grid_resolution * 1.8
-    flat_height_limit = max(0.12, max_step_height * 0.5)
-    ramp_grade_limit = max(0.08, max_slope_grade * 0.35)
-
-    for node in nodes:
-        candidates: set[int] = set()
-        key_x, key_y = _bin_key(node.x, node.y, grid_resolution)
-        for bx in range(key_x - 1, key_x + 2):
-            for by in range(key_y - 1, key_y + 2):
-                candidates.update(bins.get((bx, by), []))
-        candidates.discard(node.index)
-        neighbors = [
-            nodes[index]
-            for index in candidates
-            if math.hypot(nodes[index].x - node.x, nodes[index].y - node.y)
-            <= search_radius
-        ]
-        if not neighbors:
-            node.surface_label = (
-                'slam_floor' if node.z <= flat_height_limit else 'slam_deck'
-            )
-            continue
-
-        local_grades: list[float] = []
-        local_dzs: list[float] = []
-        for neighbor in neighbors:
-            horizontal = math.hypot(neighbor.x - node.x, neighbor.y - node.y)
-            if horizontal <= 1e-6:
-                continue
-            dz = abs(neighbor.z - node.z)
-            local_dzs.append(dz)
-            local_grades.append(dz / horizontal)
-
-        if not local_grades:
-            node.surface_label = (
-                'slam_floor' if node.z <= flat_height_limit else 'slam_deck'
-            )
-            continue
-
-        mean_grade = sum(local_grades) / len(local_grades)
-        max_dz = max(local_dzs)
-        if mean_grade >= ramp_grade_limit and max_dz <= max_step_height * 1.2:
-            node.surface_label = 'slam_ramp'
-        elif max_dz >= max_step_height:
-            node.surface_label = 'slam_step'
-        elif node.z <= flat_height_limit:
-            node.surface_label = 'slam_floor'
-        else:
-            node.surface_label = 'slam_deck'
+def _terrain_graph_from_slam_graph(slam_graph) -> TerrainGraph:
+    nodes = [
+        TerrainNode(
+            index=node.index,
+            x=node.x,
+            y=node.y,
+            z=node.z,
+            surface_label=node.label.value,
+            edge_margin=node.edge_margin,
+            surface_local_x=node.surface_local_x,
+            surface_local_y=node.surface_local_y,
+            surface_half_x=node.surface_half_x,
+            surface_half_y=node.surface_half_y,
+            surface_width_axis=node.surface_width_axis,
+        )
+        for node in slam_graph.nodes
+    ]
+    return TerrainGraph(
+        nodes=nodes,
+        adjacency=slam_graph.adjacency,
+        terrain_cloud=slam_graph.terrain_cloud,
+    )
 
 
 def plan_terrain_path(
@@ -366,6 +223,37 @@ def plan_terrain_path(
     goal_xy: tuple[float, float],
     start_z: float = 0.0,
     goal_z_policy: str = 'highest',
+    max_goal_xy_distance: float = math.inf,
+) -> list[TerrainNode]:
+    for policy in _goal_search_policies(goal_z_policy):
+        path = _plan_terrain_path_once(
+            graph,
+            start_xy,
+            goal_xy,
+            start_z,
+            policy,
+            max_goal_xy_distance,
+        )
+        if path:
+            return path
+    return []
+
+
+def _goal_search_policies(goal_z_policy: str) -> list[str]:
+    if goal_z_policy == 'adaptive':
+        return ['highest', 'nearest_z', 'lowest']
+    if goal_z_policy in {'highest', 'lowest', 'nearest_z'}:
+        return [goal_z_policy]
+    return ['nearest_z']
+
+
+def _plan_terrain_path_once(
+    graph: TerrainGraph,
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    start_z: float,
+    goal_z_policy: str,
+    max_goal_xy_distance: float,
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
@@ -382,6 +270,13 @@ def plan_terrain_path(
         policy=goal_z_policy,
     )
     if start_index is None or goal_index is None:
+        return []
+    goal_node = graph.nodes[goal_index]
+    if (
+        math.isfinite(max_goal_xy_distance)
+        and math.hypot(goal_node.x - goal_xy[0], goal_node.y - goal_xy[1])
+        > max(0.0, max_goal_xy_distance)
+    ):
         return []
     if start_index == goal_index:
         return [graph.nodes[start_index]]
@@ -424,6 +319,91 @@ def plan_terrain_path(
     return path
 
 
+def _terrain_graph_route_diagnostics(
+    graph: TerrainGraph,
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    start_z: float,
+    goal_z_policy: str,
+) -> str:
+    if not graph.nodes:
+        return 'terrain graph diagnostics: graph is empty'
+
+    start_index = _nearest_node(
+        graph.nodes,
+        start_xy,
+        z_reference=start_z,
+        policy='nearest_z',
+    )
+    goal_index = _nearest_node(
+        graph.nodes,
+        goal_xy,
+        z_reference=start_z,
+        policy=goal_z_policy,
+    )
+    if start_index is None or goal_index is None:
+        return 'terrain graph diagnostics: start or goal nearest node missing'
+
+    component_ids, component_sizes = _weak_components(graph.adjacency)
+    start_node = graph.nodes[start_index]
+    goal_node = graph.nodes[goal_index]
+    start_component = component_ids[start_index]
+    goal_component = component_ids[goal_index]
+    xs = [node.x for node in graph.nodes]
+    ys = [node.y for node in graph.nodes]
+    zs = [node.z for node in graph.nodes]
+
+    return (
+        'terrain graph diagnostics: '
+        f'nodes={len(graph.nodes)} '
+        f'edges={sum(len(edges) for edges in graph.adjacency)} '
+        f'bounds=x[{min(xs):.2f},{max(xs):.2f}] '
+        f'y[{min(ys):.2f},{max(ys):.2f}] '
+        f'z[{min(zs):.2f},{max(zs):.2f}] '
+        f'start_node=({start_node.x:.2f},{start_node.y:.2f},'
+        f'{start_node.z:.2f},{start_node.surface_label},'
+        f'degree={len(graph.adjacency[start_index])},'
+        f'component={start_component},'
+        f'component_size={component_sizes[start_component]}) '
+        f'goal_node=({goal_node.x:.2f},{goal_node.y:.2f},'
+        f'{goal_node.z:.2f},{goal_node.surface_label},'
+        f'degree={len(graph.adjacency[goal_index])},'
+        f'component={goal_component},'
+        f'component_size={component_sizes[goal_component]}) '
+        f'largest_components={sorted(component_sizes, reverse=True)[:5]}'
+    )
+
+
+def _weak_components(
+    adjacency: list[list[tuple[int, float]]],
+) -> tuple[list[int], list[int]]:
+    undirected = [set() for _ in adjacency]
+    for index, edges in enumerate(adjacency):
+        for other, _ in edges:
+            undirected[index].add(other)
+            undirected[other].add(index)
+
+    component_ids = [-1] * len(adjacency)
+    component_sizes: list[int] = []
+    for index in range(len(adjacency)):
+        if component_ids[index] >= 0:
+            continue
+        component_id = len(component_sizes)
+        queue = [index]
+        component_ids[index] = component_id
+        size = 0
+        while queue:
+            current = queue.pop()
+            size += 1
+            for other in undirected[current]:
+                if component_ids[other] >= 0:
+                    continue
+                component_ids[other] = component_id
+                queue.append(other)
+        component_sizes.append(size)
+    return component_ids, component_sizes
+
+
 class TerrainPctPlanner(Node):
     def __init__(self) -> None:
         super().__init__('terrain_pct_planner')
@@ -441,7 +421,7 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('slam_map_topic', '/Laser_map')
         self.declare_parameter('slam_map_max_points', 180000)
         self.declare_parameter('slam_grid_resolution', 0.25)
-        self.declare_parameter('slam_min_cell_points', 4)
+        self.declare_parameter('slam_min_cell_points', 2)
         self.declare_parameter('slam_vertical_layer_gap', 0.18)
         self.declare_parameter('slam_rebuild_period_sec', 3.0)
         self.declare_parameter('use_initial_pose_anchor', True)
@@ -477,6 +457,7 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('terrain_publish_period_sec', 4.0)
         self.declare_parameter('duplicate_goal_xy_tolerance', 0.05)
         self.declare_parameter('duplicate_goal_time_sec', 1.5)
+        self.declare_parameter('goal_snap_max_distance', 1.0)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         self._world_frame = str(self.get_parameter('world_frame').value)
@@ -556,6 +537,9 @@ class TerrainPctPlanner(Node):
         )
         self._duplicate_goal_time_sec = float(
             self.get_parameter('duplicate_goal_time_sec').value
+        )
+        self._goal_snap_max_distance = float(
+            self.get_parameter('goal_snap_max_distance').value
         )
         self._use_initial_pose_anchor = bool(
             self.get_parameter('use_initial_pose_anchor').value
@@ -822,6 +806,7 @@ class TerrainPctPlanner(Node):
             (goal_x, goal_y),
             start_z=terrain_start_z,
             goal_z_policy=self._goal_z_policy,
+            max_goal_xy_distance=self._goal_snap_max_distance,
         )
         if not path:
             self.get_logger().warning(
@@ -829,6 +814,15 @@ class TerrainPctPlanner(Node):
                 f'start=({start_x:.2f},{start_y:.2f}) '
                 f'goal=({goal_x:.2f},{goal_y:.2f})'
             )
+            diagnostics = _terrain_graph_route_diagnostics(
+                self._graph,
+                (start_x, start_y),
+                (goal_x, goal_y),
+                terrain_start_z,
+                self._goal_z_policy,
+            )
+            if diagnostics:
+                self.get_logger().warning(diagnostics)
             return
         self._last_planned_path = path
         self._publish_path(path)
@@ -1327,6 +1321,14 @@ def _nearest_node(
             if math.hypot(node.x - xy[0], node.y - xy[1]) <= min_xy + 0.75
         ]
         return max(candidates, key=lambda node: node.z).index
+    if policy == 'lowest':
+        min_xy = math.hypot(nearby[0].x - xy[0], nearby[0].y - xy[1])
+        candidates = [
+            node
+            for node in nearby
+            if math.hypot(node.x - xy[0], node.y - xy[1]) <= min_xy + 0.75
+        ]
+        return min(candidates, key=lambda node: node.z).index
     return min(
         nearby,
         key=lambda node: (

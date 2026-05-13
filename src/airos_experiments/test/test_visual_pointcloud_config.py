@@ -43,7 +43,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
     assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
     assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.25')" in launch_text
-    assert "DeclareLaunchArgument('slam_min_cell_points', default_value='4')" in launch_text
+    assert "DeclareLaunchArgument('slam_min_cell_points', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('slam_vertical_layer_gap', default_value='0.18')" in launch_text
     assert "DeclareLaunchArgument('slam_rebuild_period_sec', default_value='3.0')" in launch_text
     assert "DeclareLaunchArgument('use_route', default_value='false')" in launch_text
@@ -64,6 +64,8 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'slam_min_cell_points': LaunchConfiguration('slam_min_cell_points')" in launch_text
     assert "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')" in launch_text
     assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
+    assert "'goal_z_policy': 'adaptive'" in launch_text
+    assert "'goal_snap_max_distance': 1.0" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
     assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text

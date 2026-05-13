@@ -436,6 +436,21 @@ Implemented:
   SDF surfaces retain the explicit ramp-entry metadata, while SLAM-derived
   surfaces use slope/step limits because the point cloud has no SDF box
   metadata.
+- `slam_traversability_graph.py` now separates SLAM-cloud traversability
+  extraction and graph construction from `terrain_pct_planner.py`. The planner
+  keeps Nav2/direct execution responsibilities, while the new module owns
+  `/Laser_map` point sampling, floor/ramp/platform/step labeling, and graph
+  connectivity.
+- The default SLAM-cloud planner uses `slam_min_cell_points:=2` to avoid
+  fragmenting sparse FAST-LIO clouds into tiny disconnected cells.
+- The visual FAST-LIO planner launch uses `goal_z_policy:=adaptive` and
+  `goal_snap_max_distance:=1.0`, so same-level goals can fall back from an
+  unreachable high point to a reachable floor point, while targets outside the
+  current SLAM-map coverage are rejected instead of producing a false path.
+- Regression coverage includes synthetic floor -> ramp -> platform routing,
+  direct platform-edge drop rejection, sparse same-level routing from the spawn
+  area, large-world spawn -> third-level routing on a complete sampled point
+  cloud, adaptive goal-height fallback, and out-of-coverage goal rejection.
 
 Runtime smoke evidence:
 
@@ -443,15 +458,20 @@ Runtime smoke evidence:
   `ros2 launch airos_experiments visual_fast_lio_navigation.launch.py gui:=false rviz:=false sensor_source:=emulated terrain_map_source:=slam_cloud terrain_send_nav2_goals:=false dynamic_obstacles:=false physical_dynamic_obstacles:=false log_level:=warn`
 - FAST-LIO2 published `/Laser_map`.
 - `terrain_pct_planner` rebuilt the FAST-LIO terrain graph with 5716 nodes and
-  about 35660 edges.
-- `/terrain_traversability_cloud` published with width 5716.
-- Publishing `/terrain_goal_pose` at `(2.0, 2.0)` produced `/pct_path` with
-  46 poses.
+  about 31700 directed edges.
+- Publishing `/terrain_goal_pose` at `(2.0, -8.0)` produced `/pct_path` with
+  11 poses, starting near `(-0.127, -10.002, -0.400)` and ending near
+  `(1.953, -7.995, -0.399)`.
+- Publishing `/terrain_goal_pose` at `(6.0, 13.0)` produced no `/pct_path`.
+  This is the intended behavior for the current map state because the nearest
+  SLAM graph point was outside the 1.0 m goal snap limit and in a disconnected
+  component.
 
 Remaining limitation:
 
 - This is not yet a fully accepted cross-level FAST-LIO2 navigation chain.
-  A probe from the spawn area to high-floor goals still reports no path, even
-  though `/Laser_map` contains high-elevation points up to about `z=2.30`.
-  The remaining issue is traversability extraction and connectivity in the
-  SLAM-derived terrain graph, not the absence of FAST-LIO2 map output.
+  The complete sampled point-cloud graph can route from the spawn area to the
+  third level in tests, but the live FAST-LIO local map at startup does not yet
+  cover and connect the high-floor goal region. The remaining work is active
+  exploration / map-progress replanning plus cross-level execution, not basic
+  `/Laser_map` publishing.
