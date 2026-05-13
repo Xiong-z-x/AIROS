@@ -86,6 +86,12 @@ def _launch_setup(context, *args, **kwargs):
         'single_floor_lab': 'single_floor_lab.sdf',
         'advanced_indoor_ramp': 'advanced_indoor_ramp.sdf',
         'realistic_multilevel_ramp': 'realistic_multilevel_ramp.sdf',
+        'large_multilevel_complex': 'large_multilevel_complex.sdf',
+    }
+    static_world_files = {
+        'advanced_indoor_ramp': 'advanced_indoor_ramp_static.sdf',
+        'realistic_multilevel_ramp': 'realistic_multilevel_ramp_static.sdf',
+        'large_multilevel_complex': 'large_multilevel_complex_static.sdf',
     }
     if world_name not in world_files:
         raise RuntimeError(
@@ -139,7 +145,12 @@ def _launch_setup(context, *args, **kwargs):
     robot_spawn_z = LaunchConfiguration('robot_spawn_z').perform(context)
     robot_spawn_yaw = LaunchConfiguration('robot_spawn_yaw').perform(context)
 
-    world_file = os.path.join(pkg_sim, 'worlds', world_files[world_name])
+    world_filename = (
+        world_files[world_name]
+        if physical_dynamic_obstacles
+        else static_world_files.get(world_name, world_files[world_name])
+    )
+    world_file = os.path.join(pkg_sim, 'worlds', world_filename)
     bridge_config = os.path.join(pkg_sim, 'config', 'ros_gz_bridge.yaml')
     xacro_file = os.path.join(pkg_desc, 'urdf', 'go2w_nav_eq.urdf.xacro')
     controller_yaml = os.path.join(pkg_control, 'config', 'go2w_controllers.yaml')
@@ -275,6 +286,7 @@ def _launch_setup(context, *args, **kwargs):
             'publish_rate_hz': 6.0,
             'dynamic_obstacles_enabled': dynamic_obstacles,
             'dynamic_obstacle_seed': dynamic_obstacle_seed,
+            'include_dynamic_models': physical_dynamic_obstacles,
         }],
     )
 
@@ -293,6 +305,7 @@ def _launch_setup(context, *args, **kwargs):
             'publish_rate_hz': 2.0,
             'dynamic_obstacles_enabled': True,
             'dynamic_obstacle_seed': dynamic_obstacle_seed,
+            'include_dynamic_models': physical_dynamic_obstacles,
         }],
     )
 
@@ -316,6 +329,7 @@ def _launch_setup(context, *args, **kwargs):
             'range_max': 12.0,
             'point_spacing': point_spacing,
             'max_live_points': max_live_points,
+            'include_dynamic_models': physical_dynamic_obstacles,
         }],
     )
 
@@ -429,8 +443,8 @@ def generate_launch_description():
         DeclareLaunchArgument('pointcloud', default_value='true'),
         DeclareLaunchArgument('pointcloud_registered', default_value='true'),
         DeclareLaunchArgument('pointcloud_map', default_value='true'),
-        DeclareLaunchArgument('point_spacing', default_value='0.12'),
-        DeclareLaunchArgument('max_live_points', default_value='22000'),
+        DeclareLaunchArgument('point_spacing', default_value='0.06'),
+        DeclareLaunchArgument('max_live_points', default_value='180000'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),

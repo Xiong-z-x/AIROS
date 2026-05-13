@@ -1,8 +1,10 @@
 import math
+from pathlib import Path
 
 from airos_experiments.scan_emulator import (
     OdomAnchor,
     Pose2D,
+    _load_obstacles,
     _map_pose_from_anchor,
 )
 
@@ -31,3 +33,14 @@ def test_map_pose_from_anchor_rotates_odom_delta() -> None:
     assert math.isclose(result.x, 1.0, abs_tol=1e-12)
     assert math.isclose(result.y, 2.0, abs_tol=1e-12)
     assert math.isclose(result.yaw, math.pi / 2.0, abs_tol=1e-12)
+
+
+def test_scan_obstacle_loader_excludes_dynamic_models_by_default() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    world = repo_root / 'src/airos_sim/worlds/realistic_multilevel_ramp.sdf'
+
+    default_obstacles = _load_obstacles(world)
+    dynamic_obstacles = _load_obstacles(world, include_dynamic_models=True)
+
+    assert len(default_obstacles) == 17
+    assert len(dynamic_obstacles) == 19

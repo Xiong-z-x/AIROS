@@ -5,3 +5,8 @@ log/
 .learnings/
 __pycache__/
 *.py[cod]
+results/
+*.Zone.Identifier
+*:Zone.Identifier
+*.docx
+*.pdf

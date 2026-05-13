@@ -33,15 +33,43 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
-    assert "DeclareLaunchArgument('pointcloud_spacing', default_value='0.12')" in launch_text
-    assert "DeclareLaunchArgument('max_live_points', default_value='22000')" in launch_text
+    assert "DeclareLaunchArgument('dense_visual_pointcloud', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('pointcloud_spacing', default_value='0.06')" in launch_text
+    assert "DeclareLaunchArgument('max_live_points', default_value='180000')" in launch_text
+    assert "DeclareLaunchArgument('fast_lio_pointcloud_spacing', default_value='0.16')" in launch_text
+    assert "DeclareLaunchArgument('fast_lio_max_live_points', default_value='12000')" in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('use_route', default_value='false')" in launch_text
+    assert "DeclareLaunchArgument('nav_stack_mode', default_value='safety_only')" in launch_text
     assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
+    assert "DeclareLaunchArgument('world', default_value='large_multilevel_complex')" in launch_text
+    assert "'point_spacing': LaunchConfiguration('fast_lio_pointcloud_spacing')" in launch_text
+    assert "'max_live_points': LaunchConfiguration('fast_lio_max_live_points')" in launch_text
+    assert "name='dense_building_pointcloud'" in launch_text
+    assert "'registered_cloud_topic': '/dense_visual_cloud'" in launch_text
     assert "'point_spacing': LaunchConfiguration('pointcloud_spacing')" in launch_text
     assert "'max_live_points': LaunchConfiguration('max_live_points')" in launch_text
+    assert "'goal_topic': '/terrain_goal_pose'" in launch_text
+    assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
+    assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
+    assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text
+    assert "'grid_resolution': 0.25" in launch_text
+    assert "'terrain_cloud_resolution': 0.10" in launch_text
+    assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
+    assert "'direct_max_linear_speed': 0.16" in launch_text
+    assert "'direct_max_angular_speed': 0.28" in launch_text
+    assert "'large_multilevel_complex_static.sdf'" in launch_text
+    assert "'start_waypoint_clearance': 0.75" in launch_text
+    assert "'follow_path_start_clearance': 0.12" in launch_text
+    assert "'slope_speed_limit': 0.09" in launch_text
+    assert "'flat_speed_limit': 0.18" in launch_text
+    assert "'initial_surface_z_hint': LaunchConfiguration('robot_spawn_z')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_y', default_value='-10.0')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='-1.5708')" in launch_text
     assert "'min_visible_z': 0.08" in launch_text
-    assert "'max_points': 220000" in launch_text
+    assert "'max_points': 800000" in launch_text
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
@@ -62,6 +90,19 @@ def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
     assert "'lidar_topic': '/livox/lidar_points'" in launch_text
     assert "'sensor_source': LaunchConfiguration('sensor_source')" in visual_launch_text
     assert "DeclareLaunchArgument('sensor_source', default_value='native')" in visual_launch_text
+
+
+def test_fast_lio_sim_profile_preserves_dense_building_pointclouds() -> None:
+    fast_lio_config = yaml.safe_load(
+        _read_text('src/fast_lio/config/airos_sim.yaml')
+    )
+    params = fast_lio_config['/**']['ros__parameters']
+
+    assert params['point_filter_num'] == 1
+    assert params['filter_size_surf'] == 0.16
+    assert params['filter_size_map'] == 0.16
+    assert params['publish']['dense_publish_en'] is False
+    assert params['publish']['scan_publish_en'] is True
 
 
 def test_native_gazebo_lidar_sensors_are_declared_on_robot() -> None:
@@ -199,6 +240,9 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     terrain_cloud = _rviz_display(
         'Terrain Traversability Cloud /terrain_traversability_cloud'
     )
+    dense_building_cloud = _rviz_display(
+        'Dense Building Cloud /dense_visual_cloud'
+    )
     registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
     livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
@@ -212,16 +256,33 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     assert colorized_map['Color Transformer'] == 'RGB8'
     assert colorized_map['Topic']['Value'] == '/Laser_map_colored'
     assert colorized_map['Decay Time'] == 0
+    assert colorized_map['Style'] == 'Points'
+    assert colorized_map['Size (Pixels)'] == 2
+    assert colorized_map['Size (m)'] == 0.02
 
     assert terrain_cloud['Enabled'] is True
     assert terrain_cloud['Value'] is True
     assert terrain_cloud['Topic']['Value'] == '/terrain_traversability_cloud'
     assert terrain_cloud['Topic']['Durability Policy'] == 'Transient Local'
+    assert terrain_cloud['Style'] == 'Points'
+    assert terrain_cloud['Size (Pixels)'] == 2
+    assert terrain_cloud['Size (m)'] == 0.02
+
+    assert dense_building_cloud['Enabled'] is True
+    assert dense_building_cloud['Value'] is True
+    assert dense_building_cloud['Topic']['Value'] == '/dense_visual_cloud'
+    assert dense_building_cloud['Color Transformer'] == 'AxisColor'
+    assert dense_building_cloud['Style'] == 'Points'
+    assert dense_building_cloud['Size (Pixels)'] == 1
+    assert dense_building_cloud['Size (m)'] == 0.012
+    assert dense_building_cloud['Decay Time'] == 0
 
     assert registered_cloud['Enabled'] is True
     assert registered_cloud['Value'] is True
     assert registered_cloud['Color Transformer'] == 'AxisColor'
     assert registered_cloud['Style'] == 'Points'
+    assert registered_cloud['Size (Pixels)'] == 2
+    assert registered_cloud['Size (m)'] == 0.02
     assert registered_cloud['Decay Time'] == 0
     assert registered_cloud['Topic']['Depth'] == 1
 
@@ -242,6 +303,14 @@ def test_nav_rviz_shows_terrain_path_and_hides_dynamic_obstacles_by_default() ->
 
     assert 'rviz_default_plugins/SetGoal' in tool_classes
     assert 'nav2_rviz_plugins/GoalTool' not in tool_classes
+    assert not any(
+        panel['Class'] == 'nav2_rviz_plugins/Navigation 2'
+        for panel in rviz_config['Panels']
+    )
+    goal_tool = next(
+        tool for tool in tools if tool['Class'] == 'rviz_default_plugins/SetGoal'
+    )
+    assert goal_tool['Topic']['Value'] == '/terrain_goal_pose'
     assert terrain_path['Enabled'] is True
     assert terrain_path['Topic']['Value'] == '/pct_path'
     assert dynamic_obstacles['Enabled'] is False

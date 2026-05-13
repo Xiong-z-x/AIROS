@@ -20,7 +20,7 @@ diff_drive_controller:
     right_wheel_names:
       - fr_wheel_joint
       - rr_wheel_joint
-    wheel_separation: 0.51
+    wheel_separation: 0.72
     wheel_radius: 0.09
     base_frame_id: base_footprint
     odom_frame_id: odom
@@ -37,16 +37,16 @@ diff_drive_controller:
     linear:
       x:
         has_velocity_limits: true
-        max_velocity: 0.24
+        max_velocity: 0.18
         min_velocity: 0.0
         has_acceleration_limits: true
-        max_acceleration: 0.22
-        min_acceleration: -0.35
+        max_acceleration: 0.12
+        min_acceleration: -0.22
     angular:
       z:
         has_velocity_limits: true
-        max_velocity: 0.55
-        min_velocity: -0.55
+        max_velocity: 0.40
+        min_velocity: -0.40
         has_acceleration_limits: true
-        max_acceleration: 0.55
-        min_acceleration: -0.65
+        max_acceleration: 0.35
+        min_acceleration: -0.45

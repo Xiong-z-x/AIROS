@@ -21,6 +21,34 @@ def test_control_launch_has_no_cmd_vel_bypass_to_base_controller() -> None:
     assert 'cmd_vel_relay' not in launch_text
 
 
+def test_nav_launch_lifecycle_manages_collision_monitor_inline() -> None:
+    launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
+
+    assert 'collision_monitor_node.launch.py' not in launch_text
+    assert "package='nav2_collision_monitor'" in launch_text
+    assert "executable='collision_monitor'" in launch_text
+    assert "name='lifecycle_manager_collision_monitor'" in launch_text
+    assert "condition=IfCondition(_full_stack_enabled(nav_stack_mode))" in launch_text
+    assert "'node_names': ['collision_monitor']" in launch_text
+
+
+def test_nav_launch_can_run_controller_only_for_pct_execution() -> None:
+    launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
+
+    assert "DeclareLaunchArgument('nav_stack_mode', default_value='full')" in launch_text
+    assert (
+        "nav_stack_mode must be 'full', 'controller_only' or 'safety_only'"
+        in launch_text
+    )
+    assert "name='controller_only_lifecycle_activator'" in launch_text
+    assert "name='safety_only_lifecycle_activator'" in launch_text
+    assert "'controller_server'," in launch_text
+    assert "'velocity_smoother'," in launch_text
+    assert "'collision_monitor'," in launch_text
+    assert "'node_names': ['velocity_smoother', 'collision_monitor']" in launch_text
+    assert "condition=IfCondition(_full_stack_enabled(nav_stack_mode))" in launch_text
+
+
 def test_gazebo_bridge_does_not_accept_direct_cmd_vel() -> None:
     bridge_entries = yaml.safe_load(
         _read_text('src/airos_sim/config/ros_gz_bridge.yaml')
@@ -37,12 +65,23 @@ def test_base_controller_limits_match_nav2_safe_chain() -> None:
     controllers = yaml.safe_load(
         _read_text('src/airos_control/config/go2w_controllers.yaml')
     )
+    robot_model = _read_text(
+        'src/airos_go2w_description/urdf/go2w_nav_eq.urdf.xacro'
+    )
     diff_drive = controllers['diff_drive_controller']['ros__parameters']
 
-    assert diff_drive['linear']['x']['max_velocity'] <= 0.24
+    assert diff_drive['wheel_separation'] == 0.72
+    assert '<xacro:property name="wheel_y" value="0.36"/>' in robot_model
+    assert '<xacro:property name="base_z" value="0.18"/>' in robot_model
+    assert '<xacro:property name="body_mass" value="14.0"/>' in robot_model
+    assert '<mu1>3.0</mu1>' in robot_model
+    assert '<mu2>3.0</mu2>' in robot_model
+    assert diff_drive['linear']['x']['max_velocity'] <= 0.18
     assert diff_drive['linear']['x']['min_velocity'] >= 0.0
-    assert diff_drive['angular']['z']['max_velocity'] <= 0.55
-    assert diff_drive['angular']['z']['min_velocity'] >= -0.55
+    assert diff_drive['linear']['x']['max_acceleration'] <= 0.12
+    assert diff_drive['angular']['z']['max_velocity'] <= 0.40
+    assert diff_drive['angular']['z']['min_velocity'] >= -0.40
+    assert diff_drive['angular']['z']['max_acceleration'] <= 0.35
 
 
 def test_sim_odom_is_gazebo_truth_not_wheel_integrator() -> None:
@@ -91,7 +130,9 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
     )
     controller = nav_params['controller_server']['ros__parameters']
     follow_path = controller['FollowPath']
+    progress_checker = controller['progress_checker']
     smoother = nav_params['velocity_smoother']['ros__parameters']
+    collision_monitor = nav_params['collision_monitor']['ros__parameters']
 
     assert controller['controller_plugins'] == ['FollowPath']
     assert follow_path['plugin'] == (
@@ -101,7 +142,7 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
         'nav2_regulated_pure_pursuit_controller::'
         'RegulatedPurePursuitController'
     )
-    assert follow_path['desired_linear_vel'] <= 0.24
+    assert follow_path['desired_linear_vel'] <= 0.18
     assert follow_path['use_rotate_to_heading'] is False
     assert follow_path['allow_reversing'] is False
     assert 0.55 <= follow_path['angular_dist_threshold'] <= 0.9
@@ -109,8 +150,16 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
         0.25 <= follow_path['angular_disengage_threshold']
         < follow_path['angular_dist_threshold']
     )
-    assert smoother['max_velocity'][0] <= 0.24
+    assert smoother['max_velocity'][0] <= 0.18
     assert smoother['min_velocity'][0] >= 0.0
+    assert smoother['max_accel'][0] <= 0.12
+    assert 0.12 <= progress_checker['required_movement_radius'] <= 0.25
+    assert progress_checker['movement_time_allowance'] >= 18.0
+    assert follow_path['use_collision_detection'] is False
+    assert follow_path['cost_scaling_dist'] <= 0.35
+    assert collision_monitor['StopZone']['max_points'] >= 5
+    assert collision_monitor['SlowZone']['max_points'] >= 4
+    assert collision_monitor['SlowZone']['slowdown_ratio'] >= 0.55
 
 
 def test_nav2_uses_base_footprint_for_ground_pose_control() -> None:

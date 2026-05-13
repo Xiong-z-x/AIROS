@@ -179,7 +179,10 @@ def _ray_circle_intersection(
     return min(candidates)
 
 
-def _load_obstacles(world_file: Path) -> list[Obstacle]:
+def _load_obstacles(
+    world_file: Path,
+    include_dynamic_models: bool = False,
+) -> list[Obstacle]:
     try:
         root = ET.parse(world_file).getroot()
     except (ET.ParseError, FileNotFoundError):
@@ -195,6 +198,9 @@ def _load_obstacles(world_file: Path) -> list[Obstacle]:
     for model in world.findall('model'):
         name = model.get('name', '')
         if name in ignored_models:
+            continue
+        static = (model.findtext('static') or 'false').lower() == 'true'
+        if not include_dynamic_models and not static:
             continue
 
         pose_text = model.findtext('pose')
@@ -264,14 +270,18 @@ class ScanEmulator(Node):
         self.declare_parameter('publish_rate_hz', 10.0)
         self.declare_parameter('dynamic_obstacles_enabled', False)
         self.declare_parameter('dynamic_obstacle_seed', 0)
+        self.declare_parameter('include_dynamic_models', False)
         self.declare_parameter(
             'dynamic_marker_topic',
             '/dynamic_obstacles/markers',
         )
 
         world_file = Path(self.get_parameter('world_file').value)
+        include_dynamic_models = bool(
+            self.get_parameter('include_dynamic_models').value
+        )
         self._obstacles = (
-            _load_obstacles(world_file)
+            _load_obstacles(world_file, include_dynamic_models)
             if world_file.as_posix()
             else []
         )

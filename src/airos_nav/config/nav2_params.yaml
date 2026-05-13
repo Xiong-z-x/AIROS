@@ -108,8 +108,8 @@ controller_server:
 
     progress_checker:
       plugin: nav2_controller::SimpleProgressChecker
-      required_movement_radius: 0.35
-      movement_time_allowance: 12.0
+      required_movement_radius: 0.12
+      movement_time_allowance: 60.0
 
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
@@ -128,7 +128,7 @@ controller_server:
       rotate_to_goal_heading: false
       closed_loop: true
       simulate_ahead_time: 1.0
-      desired_linear_vel: 0.22
+      desired_linear_vel: 0.16
       lookahead_dist: 0.35
       min_lookahead_dist: 0.25
       max_lookahead_dist: 0.55
@@ -137,13 +137,13 @@ controller_server:
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.04
       approach_velocity_scaling_dist: 0.45
-      use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_collision_detection: false
+      max_allowed_time_to_collision_up_to_carrot: 0.45
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.65
       regulated_linear_scaling_min_speed: 0.05
-      cost_scaling_dist: 0.5
+      cost_scaling_dist: 0.35
       cost_scaling_gain: 1.0
       inflation_cost_scaling_factor: 3.0
       use_rotate_to_heading: false
@@ -316,10 +316,10 @@ velocity_smoother:
     smoothing_frequency: 15.0
     scale_velocities: false
     feedback: OPEN_LOOP
-    max_velocity: [0.24, 0.0, 0.55]
-    min_velocity: [0.0, 0.0, -0.55]
-    max_accel: [0.22, 0.0, 0.55]
-    max_decel: [-0.35, 0.0, -0.65]
+    max_velocity: [0.18, 0.0, 0.40]
+    min_velocity: [0.0, 0.0, -0.40]
+    max_accel: [0.12, 0.0, 0.35]
+    max_decel: [-0.22, 0.0, -0.45]
     odom_topic: /odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
@@ -339,18 +339,18 @@ collision_monitor:
     polygons: [StopZone, SlowZone]
     StopZone:
       type: polygon
-      points: [0.48, 0.32, 0.48, -0.32, -0.25, -0.32, -0.25, 0.32]
+      points: [0.38, 0.28, 0.38, -0.28, -0.22, -0.28, -0.22, 0.28]
       action_type: stop
-      max_points: 3
+      max_points: 5
       visualize: true
       polygon_pub_topic: polygon_stop
       enabled: true
     SlowZone:
       type: polygon
-      points: [0.85, 0.48, 0.85, -0.48, -0.45, -0.48, -0.45, 0.48]
+      points: [0.62, 0.40, 0.62, -0.40, -0.38, -0.40, -0.38, 0.40]
       action_type: slowdown
-      max_points: 2
-      slowdown_ratio: 0.35
+      max_points: 4
+      slowdown_ratio: 0.55
       visualize: true
       polygon_pub_topic: polygon_slowdown
       enabled: true

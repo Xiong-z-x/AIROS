@@ -32,3 +32,11 @@
 - 本机 Gazebo Fortress 安装了 `ignition-gazebo-triggered-publisher-system` 和 `ignition-gazebo-velocity-control-system`，可用于 Gazebo 物理动态障碍。
 - `3d_dog_navi_ros2` 的 Go2W 模型文件和 Building mesh 可作为长期视觉参考；直接复制整包会引入 Garden、CHAMP、多包控制栈和自定义 Livox 插件，短期风险过高。
 - 已采用受控导入：只复制 AFL 3.0 许可的 Building mesh、Go2W body/wheel/Mid360 mesh 和 license 文本，作为可选视觉层；不迁入 Garden/CHAMP 控制栈。
+
+
+## 2026-05-11 PCT 执行链发现
+
+- 本项目当前默认 PCT 演示应解释为：PCT-style 三维地形规划器负责跨高度路径，Nav2 不再启动 planner_server/bt_navigator/route_server 参与全局规划。
+- Nav2 `FollowPath` + RotationShim/RPP 对斜坡坡底急转不稳定：能下坡，但会因碰撞预测或路径剪空 abort，并表现为原地旋转/不出发。
+- 默认关闭动态障碍必须从 Gazebo world 层移除物理动态模型；仅不触发 velocity-control 仍会让静态障碍占据路径。
+- 更稳定的工程链路是 PCT planner 自己按三维路径做局部 pure-pursuit/waypoint 跟踪，输出 `/cmd_vel_nav`，再经过 Nav2 velocity_smoother 和 collision_monitor 到 base controller。

@@ -16,31 +16,46 @@ def _read_text(relative_path: str) -> str:
 def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     launch_text = _read_text('src/airos_sim/launch/sim.launch.py')
     world_text = _read_text('src/airos_sim/worlds/advanced_indoor_ramp.sdf')
+    static_world_text = _read_text(
+        'src/airos_sim/worlds/advanced_indoor_ramp_static.sdf'
+    )
     realistic_world_text = _read_text(
         'src/airos_sim/worlds/realistic_multilevel_ramp.sdf'
+    )
+    static_realistic_world_text = _read_text(
+        'src/airos_sim/worlds/realistic_multilevel_ramp_static.sdf'
     )
 
     assert "DeclareLaunchArgument('world', default_value='single_floor_lab')" in launch_text
     assert "advanced_indoor_ramp.sdf" in launch_text
+    assert "advanced_indoor_ramp_static.sdf" in launch_text
     assert "realistic_multilevel_ramp.sdf" in launch_text
+    assert "realistic_multilevel_ramp_static.sdf" in launch_text
     assert "physical_dynamic_obstacles" in launch_text
     assert "open_source_scene_assets" in launch_text
     assert "robot_visual_profile" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "dynamic_obstacle_marker_emulator" in launch_text
     assert "'scan_topic': '/scan_dynamic_overlay'" in launch_text
-    assert "DeclareLaunchArgument('point_spacing', default_value='0.12')" in launch_text
-    assert "DeclareLaunchArgument('max_live_points', default_value='22000')" in launch_text
+    assert "DeclareLaunchArgument('point_spacing', default_value='0.06')" in launch_text
+    assert "DeclareLaunchArgument('max_live_points', default_value='180000')" in launch_text
     assert "float(LaunchConfiguration('point_spacing').perform(context))" in launch_text
     assert "int(LaunchConfiguration('max_live_points').perform(context))" in launch_text
+    assert "'include_dynamic_models': physical_dynamic_obstacles" in launch_text
     assert "os.path.dirname(pkg_sim)" in launch_text
     assert "os.path.dirname(pkg_desc)" in launch_text
     assert "moving_pedestrian" in world_text
     assert "inspection_cart_dynamic" in world_text
     assert "triggered-publisher" in world_text
+    assert "moving_pedestrian" not in static_world_text
+    assert "inspection_cart_dynamic" not in static_world_text
+    assert "triggered-publisher" not in static_world_text
     assert "ramp_main" in world_text
     assert "wide_access_ramp" in realistic_world_text
     assert "mezzanine_deck_visual" in realistic_world_text
+    assert "moving_pedestrian" not in static_realistic_world_text
+    assert "inspection_cart_dynamic" not in static_realistic_world_text
+    assert "triggered-publisher" not in static_realistic_world_text
     assert "/airos/realistic_multilevel_ramp/start_dynamic_obstacles" in realistic_world_text
 
 

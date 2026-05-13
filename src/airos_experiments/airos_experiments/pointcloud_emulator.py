@@ -50,17 +50,21 @@ class PointCloudEmulator(Node):
         self.declare_parameter('sensor_offset_y', 0.0)
         self.declare_parameter('sensor_z', 0.40)
         self.declare_parameter('sensor_yaw_offset', 0.0)
-        self.declare_parameter('point_spacing', 0.12)
+        self.declare_parameter('point_spacing', 0.16)
         self.declare_parameter('range_max', 14.0)
         self.declare_parameter('horizontal_fov_rad', 6.28318530718)
         self.declare_parameter('publish_rate_hz', 5.0)
         self.declare_parameter('map_publish_rate_hz', 0.5)
-        self.declare_parameter('max_live_points', 22000)
+        self.declare_parameter('max_live_points', 12000)
+        self.declare_parameter('include_dynamic_models', False)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         spacing = float(self.get_parameter('point_spacing').value)
+        include_dynamic_models = bool(
+            self.get_parameter('include_dynamic_models').value
+        )
         self._map_points = (
-            sample_world_cloud(world_file, spacing)
+            sample_world_cloud(world_file, spacing, include_dynamic_models)
             if world_file.as_posix()
             else []
         )

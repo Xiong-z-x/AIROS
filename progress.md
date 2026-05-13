@@ -26,3 +26,10 @@
 - 补齐完成度审计弱项：导入 `ypat999/3d_dog_navi_ros2` 的 AFL 3.0 Building / Go2W / Mid360 视觉资产为可选 profile，保留当前等效体碰撞和控制链。
 
 - Added `generate_advanced_planner_candidates` as a concrete Nav2/PCT-style/RL-style route candidate artifact for advanced planner comparison while keeping PCT/RL marked as research surrogates.
+
+## 2026-05-11
+
+- 恢复当前 AIROS PCT/FAST-LIO/Nav2 仿真上下文，清理残留进程。
+- 复现斜坡下坡目标：PCT 能生成三维路径，但 FollowPath 在坡底被 RPP/collision/路径剪空中止，机器人会过冲到 y≈-3 后原地转向。
+- 已锁定根因之一：`physical_dynamic_obstacles:=false` 时原 world 仍残留 Gazebo 动态模型，默认路径会被未启用障碍影响。新增失败测试并准备静态 world。
+- 决策更新：后续默认演示链路改为 PCT 负责三维全局路径和局部跟踪，Nav2 只保留 velocity smoother + collision_monitor safety-only，不再让 Nav2 FollowPath 控制器解释坡底急转路径。

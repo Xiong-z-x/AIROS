@@ -115,7 +115,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
 RViz displays to inspect:
 
 - `/Laser_map_colored`: structural-color FAST-LIO2 map cloud.
-  The default dense visual profile uses `pointcloud_spacing:=0.12` and hides
+  The default dense visual profile uses `pointcloud_spacing:=0.16` and hides
   points below `z=0.08` in the colored map display.
 - `/cloud_registered`: current registered LiDAR cloud.
 - `/terrain_traversability_cloud`: floor/ramp/deck surfaces used by the terrain

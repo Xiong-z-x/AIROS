@@ -47,6 +47,18 @@ def _external_map_manager_enabled(
     ])
 
 
+def _full_stack_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
+    return PythonExpression(["'", nav_stack_mode, "' == 'full'"])
+
+
+def _controller_only_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
+    return PythonExpression(["'", nav_stack_mode, "' == 'controller_only'"])
+
+
+def _safety_only_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
+    return PythonExpression(["'", nav_stack_mode, "' == 'safety_only'"])
+
+
 def _launch_setup(context, *args, **kwargs):
     pkg_nav = get_package_share_directory('airos_nav')
     pkg_slam = get_package_share_directory('airos_slam')
@@ -70,6 +82,13 @@ def _launch_setup(context, *args, **kwargs):
     localization = LaunchConfiguration('localization')
     use_route = LaunchConfiguration('use_route')
     external_map_manager = LaunchConfiguration('external_map_manager')
+    nav_stack_mode = LaunchConfiguration('nav_stack_mode')
+    nav_stack_mode_value = nav_stack_mode.perform(context)
+    if nav_stack_mode_value not in {'full', 'controller_only', 'safety_only'}:
+        raise RuntimeError(
+            "nav_stack_mode must be 'full', 'controller_only' or 'safety_only', "
+            f"got {nav_stack_mode_value!r}"
+        )
     log_level = LaunchConfiguration('log_level')
 
     configured_params = ParameterFile(
@@ -201,6 +220,11 @@ def _launch_setup(context, *args, **kwargs):
 
     navigation_nodes = GroupAction([
         Node(
+            condition=IfCondition(PythonExpression([
+                "'",
+                nav_stack_mode,
+                "' != 'safety_only'",
+            ])),
             package='nav2_controller',
             executable='controller_server',
             name='controller_server',
@@ -210,6 +234,7 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_smoother',
             executable='smoother_server',
             name='smoother_server',
@@ -219,6 +244,7 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_planner',
             executable='planner_server',
             name='planner_server',
@@ -228,6 +254,7 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_behaviors',
             executable='behavior_server',
             name='behavior_server',
@@ -237,6 +264,7 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_bt_navigator',
             executable='bt_navigator',
             name='bt_navigator',
@@ -246,6 +274,7 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_waypoint_follower',
             executable='waypoint_follower',
             name='waypoint_follower',
@@ -267,6 +296,7 @@ def _launch_setup(context, *args, **kwargs):
             ],
         ),
         Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
             package='nav2_lifecycle_manager',
             executable='lifecycle_manager',
             name='lifecycle_manager_navigation',
@@ -279,18 +309,61 @@ def _launch_setup(context, *args, **kwargs):
         ),
     ])
 
-    collision_monitor = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('nav2_collision_monitor'),
-                'launch',
-                'collision_monitor_node.launch.py',
-            )
-        ),
-        launch_arguments={
+    controller_only_activator = Node(
+        condition=IfCondition(_controller_only_enabled(nav_stack_mode)),
+        package='airos_experiments',
+        executable='lifecycle_activator',
+        name='controller_only_lifecycle_activator',
+        output='screen',
+        parameters=[{
             'use_sim_time': use_sim_time,
-            'params_file': params_file,
-        }.items(),
+            'node_names': [
+                'controller_server',
+                'velocity_smoother',
+                'collision_monitor',
+            ],
+            'attempts': 20,
+            'service_timeout_sec': 3.0,
+            'poll_period_sec': 0.5,
+        }],
+    )
+
+    safety_only_activator = Node(
+        condition=IfCondition(_safety_only_enabled(nav_stack_mode)),
+        package='airos_experiments',
+        executable='lifecycle_activator',
+        name='safety_only_lifecycle_activator',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'node_names': ['velocity_smoother', 'collision_monitor'],
+            'attempts': 20,
+            'service_timeout_sec': 3.0,
+            'poll_period_sec': 0.5,
+        }],
+    )
+
+    collision_monitor = GroupAction([
+        Node(
+            package='nav2_collision_monitor',
+            executable='collision_monitor',
+            name='collision_monitor',
+            output='screen',
+            parameters=[configured_params],
+        ),
+        Node(
+            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_collision_monitor',
+            output='screen',
+            parameters=[
+                {'use_sim_time': use_sim_time},
+                {'autostart': autostart},
+                {'node_names': ['collision_monitor']},
+            ],
+        ),
+    ]
     )
 
     route_server = GroupAction(
@@ -342,6 +415,8 @@ def _launch_setup(context, *args, **kwargs):
         static_map_manager,
         external_localization_map_manager,
         navigation_nodes,
+        controller_only_activator,
+        safety_only_activator,
         collision_monitor,
         route_server,
         rviz,
@@ -383,6 +458,7 @@ def generate_launch_description():
         DeclareLaunchArgument('rviz', default_value='true'),
         DeclareLaunchArgument('localization', default_value='amcl'),
         DeclareLaunchArgument('use_route', default_value='false'),
+        DeclareLaunchArgument('nav_stack_mode', default_value='full'),
         DeclareLaunchArgument('external_map_manager', default_value='true'),
         DeclareLaunchArgument('log_level', default_value='info'),
         OpaqueFunction(function=_launch_setup),

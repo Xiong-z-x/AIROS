@@ -5,15 +5,15 @@
 
   <xacro:property name="visual_profile" value="$(arg visual_profile)"/>
   <xacro:property name="base_length" value="0.70"/>
-  <xacro:property name="base_width" value="0.43"/>
-  <xacro:property name="base_height" value="0.24"/>
-  <xacro:property name="base_z" value="0.24"/>
+  <xacro:property name="base_width" value="0.50"/>
+  <xacro:property name="base_height" value="0.18"/>
+  <xacro:property name="base_z" value="0.18"/>
   <xacro:property name="wheel_radius" value="0.09"/>
   <xacro:property name="wheel_width" value="0.055"/>
   <xacro:property name="wheel_x" value="0.255"/>
-  <xacro:property name="wheel_y" value="0.255"/>
+  <xacro:property name="wheel_y" value="0.36"/>
   <xacro:property name="wheel_z" value="0.095"/>
-  <xacro:property name="body_mass" value="16.0"/>
+  <xacro:property name="body_mass" value="14.0"/>
   <xacro:property name="wheel_mass" value="0.5"/>
 
   <xacro:macro name="box_inertial" params="mass x y z">
@@ -286,23 +286,23 @@
 
   <gazebo reference="fl_wheel_link">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
+    <mu1>3.0</mu1>
+    <mu2>3.0</mu2>
   </gazebo>
   <gazebo reference="fr_wheel_link">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
+    <mu1>3.0</mu1>
+    <mu2>3.0</mu2>
   </gazebo>
   <gazebo reference="rl_wheel_link">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
+    <mu1>3.0</mu1>
+    <mu2>3.0</mu2>
   </gazebo>
   <gazebo reference="rr_wheel_link">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>1.0</mu2>
+    <mu1>3.0</mu1>
+    <mu2>3.0</mu2>
   </gazebo>
 
   <gazebo reference="imu_link">

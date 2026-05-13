@@ -276,6 +276,8 @@ def is_traversable_box(box: BoxCollision) -> bool:
         'floor',
         'ground',
         'ramp',
+        'stair',
+        'step',
         'deck',
         'platform',
         'landing',
@@ -286,6 +288,8 @@ def is_traversable_box(box: BoxCollision) -> bool:
 
 
 def terrain_intensity(label: str) -> float:
+    if 'stair' in label or 'step' in label:
+        return 150.0
     if 'ramp' in label:
         return 135.0
     if 'deck' in label or 'platform' in label or 'landing' in label:
@@ -295,15 +299,23 @@ def terrain_intensity(label: str) -> float:
     return 80.0
 
 
-def sample_world_cloud(world_file: Path, spacing: float) -> list[CloudPoint]:
+def sample_world_cloud(
+    world_file: Path,
+    spacing: float,
+    include_dynamic: bool = True,
+    include_traversable_sides: bool = False,
+) -> list[CloudPoint]:
     geometries = load_collision_geometries(world_file)
     points: list[CloudPoint] = []
     for geometry in geometries:
+        if not include_dynamic and is_dynamic_geometry(geometry):
+            continue
         if isinstance(geometry, BoxCollision):
             traversable = is_traversable_box(geometry)
             if traversable:
                 points.extend(sample_box_top(geometry, spacing))
-                points.extend(sample_box_sides(geometry, spacing * 1.5))
+                if include_traversable_sides:
+                    points.extend(sample_box_sides(geometry, spacing * 1.5))
             else:
                 points.extend(sample_box_sides(geometry, spacing))
                 points.extend(sample_box_top(geometry, spacing))
@@ -343,6 +355,7 @@ def sample_box_sides(box: BoxCollision, spacing: float) -> list[CloudPoint]:
     intensity = terrain_intensity(label) if is_traversable_box(box) else 90.0
     points: list[CloudPoint] = []
     z_values = axis_values(-size_z / 2.0, size_z / 2.0, spacing)
+    traversable = is_traversable_box(box)
     for z_local in z_values:
         for x_local in axis_values(-half_x, half_x, spacing):
             for y_local in (-half_y, half_y):
@@ -350,6 +363,8 @@ def sample_box_sides(box: BoxCollision, spacing: float) -> list[CloudPoint]:
                     box.transform,
                     (x_local, y_local, z_local),
                 )
+                if traversable and z < 0.0:
+                    continue
                 points.append((x, y, z, intensity))
         for y_local in axis_values(-half_y, half_y, spacing):
             for x_local in (-half_x, half_x):
@@ -357,6 +372,8 @@ def sample_box_sides(box: BoxCollision, spacing: float) -> list[CloudPoint]:
                     box.transform,
                     (x_local, y_local, z_local),
                 )
+                if traversable and z < 0.0:
+                    continue
                 points.append((x, y, z, intensity))
     return points
 

@@ -334,8 +334,30 @@ Implemented fix:
 - `terrain_pct_planner` parses the same traversable SDF surfaces, builds a
   height-aware terrain graph, publishes `/terrain_traversability_cloud` and
   `/pct_path`, then sends terrain-guided `NavigateThroughPoses` waypoints.
-- The default visual emulated cloud now uses `pointcloud_spacing:=0.12` and
-  keeps up to 22k live LiDAR points. `/Laser_map_colored` keeps up to 220k
+- The visual demo RViz goal tool publishes to `/terrain_goal_pose`, not
+  Nav2's default `/goal_pose`. This prevents `bt_navigator` from also starting
+  a direct `NavigateToPose` action while the terrain planner sends
+  `NavigateThroughPoses`.
+- Terrain-guided Nav2 goals also drop the first waypoint when it lies inside
+  `start_waypoint_clearance:=0.75` of the current pose. This avoids sending a
+  near-zero first waypoint that can make the controller rotate locally instead
+  of progressing toward the real path. The graph start itself still uses the
+  current odometry z when available. If Gazebo publishes flat odometry
+  `z == 0`, the planner uses `initial_surface_z_hint:=robot_spawn_z` near the
+  initial pose and the last planned terrain path nearby, so a robot spawned on
+  the ramp plans from the ramp and can descend before going to a lower-floor
+  target.
+- `collision_monitor` is launched inline from `airos_nav/launch/nav.launch.py`
+  with `lifecycle_manager_collision_monitor`, instead of including Nav2's
+  default collision-monitor launch. This avoids an inactive collision monitor
+  that subscribes to `/cmd_vel_smoothed` but does not reliably forward commands
+  to `/diff_drive_controller/cmd_vel_unstamped`.
+- Baseline Nav2 progress checking is tuned for the slow visual quadruped
+  surrogate: `required_movement_radius:=0.18` and
+  `movement_time_allowance:=20.0`. The controller still reports real stalls,
+  but no longer aborts normal low-speed turning immediately.
+- The default visual emulated cloud now uses `pointcloud_spacing:=0.16` and
+  keeps up to 12k live LiDAR points. `/Laser_map_colored` keeps up to 220k
   sampled map points and hides points below `z=0.08` so the first-floor ground
   does not dominate the SLAM-map view.
 
@@ -364,7 +386,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
   route_graph:=src/airos_nav/routes/realistic_multilevel_ramp_route.geojson \
   sensor_source:=emulated \
   terrain_planner:=true \
-  pointcloud_spacing:=0.12 \
+  pointcloud_spacing:=0.16 \
   dynamic_obstacles:=false \
   colorized_pointcloud:=true
 ```
