@@ -17,6 +17,8 @@ from airos_experiments.terrain_pct_planner import (
     TerrainGraph,
     TerrainNode,
     build_slam_terrain_graph_from_pointcloud,
+    should_hold_active_frontier_path,
+    should_release_stalled_frontier_path,
     should_keep_pending_slam_goal,
     plan_slam_frontier_path,
     plan_terrain_path,
@@ -596,6 +598,109 @@ def test_slam_frontier_path_prefers_vertical_progress_for_high_goal() -> None:
     assert [node.index for node in path] == [0, 3, 4]
 
 
+def test_slam_frontier_path_ignores_small_height_noise_for_high_goal() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.5, -0.2, 0.19, 'slam_floor', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 4.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 0.6), (2, 2.0)],
+            [(0, 0.6)],
+            [(0, 2.0), (3, 2.0)],
+            [(2, 2.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(8.0, 0.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=5.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 2, 3]
+
+
+def test_active_frontier_path_is_held_until_reached() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    assert should_hold_active_frontier_path(
+        active_path=path,
+        current_xy=(0.25, 0.0),
+        goal_tolerance=0.35,
+    )
+
+
+def test_active_frontier_path_releases_after_goal_is_reached() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    assert not should_hold_active_frontier_path(
+        active_path=path,
+        current_xy=(1.9, 0.0),
+        goal_tolerance=0.35,
+    )
+
+
+def test_active_frontier_path_releases_when_final_goal_changes() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    assert not should_hold_active_frontier_path(
+        active_path=path,
+        current_xy=(0.25, 0.0),
+        goal_tolerance=0.35,
+        active_final_goal_xy=(6.0, 13.0),
+        final_goal_xy=(-6.0, 13.0),
+        final_goal_tolerance=0.05,
+    )
+
+
+def test_stalled_frontier_releases_after_commanded_motion_without_odom_progress() -> None:
+    assert should_release_stalled_frontier_path(
+        active_path=[
+            TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+            TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+        ],
+        commanded_motion=True,
+        current_xy=(0.02, 0.01),
+        monitor_start_xy=(0.0, 0.0),
+        elapsed_sec=9.0,
+        min_progress=0.20,
+        timeout_sec=8.0,
+    )
+
+
+def test_stalled_frontier_keeps_active_path_when_odom_progresses() -> None:
+    assert not should_release_stalled_frontier_path(
+        active_path=[
+            TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+            TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+        ],
+        commanded_motion=True,
+        current_xy=(0.35, 0.01),
+        monitor_start_xy=(0.0, 0.0),
+        elapsed_sec=9.0,
+        min_progress=0.20,
+        timeout_sec=8.0,
+    )
+
+
 def test_slam_frontier_path_uses_live_obstacle_points_to_avoid_wall_gap() -> None:
     nodes = [
         TerrainNode(0, 0.0, -1.0, 0.0, 'slam_floor', 1.0),
@@ -628,6 +733,40 @@ def test_slam_frontier_path_uses_live_obstacle_points_to_avoid_wall_gap() -> Non
     )
 
     assert [node.index for node in path] == [0, 3, 4, 2]
+
+
+def test_slam_frontier_path_avoids_recently_failed_frontier_region() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, -9.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 2.0, -9.6, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -1.0, -8.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -2.0, -7.8, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0), (3, 1.4)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0)],
+            [(0, 1.4), (4, 1.4)],
+            [(3, 1.4)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=0.5,
+        max_path_distance=3.0,
+        avoid_points=[(1.8, -9.6)],
+        avoid_clearance=1.4,
+    )
+
+    assert [node.index for node in path] == [0, 3, 4]
 
 
 def test_slam_graph_routes_around_vertical_obstacle_cells() -> None:

@@ -82,6 +82,9 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'frontier_obstacle_scan_topic': '/slam_scan'" in launch_text
     assert "'frontier_obstacle_clearance': 0.45" in launch_text
     assert "'frontier_obstacle_range_max': 3.0" in launch_text
+    assert "'frontier_stall_timeout_sec': 8.0" in launch_text
+    assert "'frontier_stall_min_progress': 0.20" in launch_text
+    assert "'frontier_failed_clearance': 1.6" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
     assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text

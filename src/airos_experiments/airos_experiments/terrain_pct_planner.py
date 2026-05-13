@@ -250,6 +250,8 @@ def plan_slam_frontier_path(
     max_path_distance: float = math.inf,
     blocked_points: Optional[list[tuple[float, float]]] = None,
     obstacle_clearance: float = 0.0,
+    avoid_points: Optional[list[tuple[float, float]]] = None,
+    avoid_clearance: float = 0.0,
     target_z: Optional[float] = None,
 ) -> list[TerrainNode]:
     if not graph.nodes:
@@ -268,6 +270,11 @@ def plan_slam_frontier_path(
         graph.nodes,
         blocked_points or [],
         obstacle_clearance,
+    )
+    avoided_frontier_nodes = _nodes_near_blocked_points(
+        graph.nodes,
+        avoid_points or [],
+        avoid_clearance,
     )
     blocked_nodes.discard(start_index)
     distances[start_index] = 0.0
@@ -297,6 +304,7 @@ def plan_slam_frontier_path(
         index
         for index in visited
         if distances[index] >= min_distance
+        and index not in avoided_frontier_nodes
     ]
     if not candidates:
         return []
@@ -315,12 +323,15 @@ def plan_slam_frontier_path(
     best_index = min(
         candidates,
         key=lambda index: (
-            _frontier_vertical_score(
+            _frontier_vertical_priority(
                 graph.nodes[index],
                 start_z=start_z,
                 target_z=target_z,
             ),
-            math.hypot(graph.nodes[index].x - goal_xy[0], graph.nodes[index].y - goal_xy[1]),
+            math.hypot(
+                graph.nodes[index].x - goal_xy[0],
+                graph.nodes[index].y - goal_xy[1],
+            ),
             -_goal_progress(
                 start_xy,
                 goal_xy,
@@ -362,17 +373,19 @@ def _frontier_makes_vertical_progress(
     return node.z >= start_z + 0.20
 
 
-def _frontier_vertical_score(
+def _frontier_vertical_priority(
     node: TerrainNode,
     *,
     start_z: float,
     target_z: Optional[float],
-) -> float:
+) -> tuple[int, float]:
     if target_z is None or target_z <= start_z + 0.45:
-        return 0.0
+        return (0, 0.0)
+    if node.z < start_z + 0.20:
+        return (1, 0.0)
     if node.z >= min(target_z, start_z + 0.45):
-        return 0.0
-    return max(0.0, target_z - node.z)
+        return (0, 0.0)
+    return (0, max(0.0, target_z - node.z))
 
 
 def _nodes_near_blocked_points(
@@ -614,6 +627,50 @@ def should_keep_pending_slam_goal(
     return terrain_map_source == 'slam_cloud' and frontier_replan_enabled
 
 
+def should_hold_active_frontier_path(
+    *,
+    active_path: list[TerrainNode],
+    current_xy: tuple[float, float],
+    goal_tolerance: float,
+    active_final_goal_xy: Optional[tuple[float, float]] = None,
+    final_goal_xy: Optional[tuple[float, float]] = None,
+    final_goal_tolerance: float = 0.05,
+) -> bool:
+    if not active_path:
+        return False
+    if active_final_goal_xy is not None and final_goal_xy is not None:
+        final_goal_distance = math.hypot(
+            active_final_goal_xy[0] - final_goal_xy[0],
+            active_final_goal_xy[1] - final_goal_xy[1],
+        )
+        if final_goal_distance > max(0.0, final_goal_tolerance):
+            return False
+    goal = active_path[-1]
+    goal_distance = math.hypot(goal.x - current_xy[0], goal.y - current_xy[1])
+    return goal_distance > max(0.0, goal_tolerance)
+
+
+def should_release_stalled_frontier_path(
+    *,
+    active_path: list[TerrainNode],
+    commanded_motion: bool,
+    current_xy: tuple[float, float],
+    monitor_start_xy: Optional[tuple[float, float]],
+    elapsed_sec: float,
+    min_progress: float,
+    timeout_sec: float,
+) -> bool:
+    if not active_path or not commanded_motion or monitor_start_xy is None:
+        return False
+    if elapsed_sec < max(0.0, timeout_sec):
+        return False
+    progress = math.hypot(
+        current_xy[0] - monitor_start_xy[0],
+        current_xy[1] - monitor_start_xy[1],
+    )
+    return progress < max(0.0, min_progress)
+
+
 def _weak_components(
     adjacency: list[list[tuple[int, float]]],
 ) -> tuple[list[int], list[int]]:
@@ -705,6 +762,9 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('frontier_obstacle_scan_topic', '/scan')
         self.declare_parameter('frontier_obstacle_clearance', 0.45)
         self.declare_parameter('frontier_obstacle_range_max', 3.0)
+        self.declare_parameter('frontier_stall_timeout_sec', 8.0)
+        self.declare_parameter('frontier_stall_min_progress', 0.20)
+        self.declare_parameter('frontier_failed_clearance', 1.6)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         self._world_frame = str(self.get_parameter('world_frame').value)
@@ -806,6 +866,15 @@ class TerrainPctPlanner(Node):
         )
         self._frontier_obstacle_range_max = float(
             self.get_parameter('frontier_obstacle_range_max').value
+        )
+        self._frontier_stall_timeout_sec = float(
+            self.get_parameter('frontier_stall_timeout_sec').value
+        )
+        self._frontier_stall_min_progress = float(
+            self.get_parameter('frontier_stall_min_progress').value
+        )
+        self._frontier_failed_clearance = float(
+            self.get_parameter('frontier_failed_clearance').value
         )
         self._frontier_target_z: Optional[float] = None
         self._use_initial_pose_anchor = bool(
@@ -948,6 +1017,12 @@ class TerrainPctPlanner(Node):
         self._last_goal_time_ns: Optional[int] = None
         self._pending_final_goal_xy: Optional[tuple[float, float]] = None
         self._last_planned_path: list[TerrainNode] = []
+        self._active_frontier_path: list[TerrainNode] = []
+        self._active_frontier_final_goal_xy: Optional[tuple[float, float]] = None
+        self._frontier_stall_start_xy: Optional[tuple[float, float]] = None
+        self._frontier_stall_start_time_ns: Optional[int] = None
+        self._frontier_stall_commanded_motion = False
+        self._frontier_avoid_points: list[tuple[float, float]] = []
         self._direct_path: list[TerrainNode] = []
         self._direct_target_index = 0
         self._direct_speed_limit = 0.0
@@ -1113,6 +1188,9 @@ class TerrainPctPlanner(Node):
             )
             return
         self._pending_final_goal_xy = None
+        self._active_frontier_path = []
+        self._active_frontier_final_goal_xy = None
+        self._reset_frontier_stall_monitor()
         self._last_planned_path = path
         self._publish_and_execute_path(path, msg)
 
@@ -1150,6 +1228,9 @@ class TerrainPctPlanner(Node):
         msg.pose.position.y = goal_y
         msg.pose.orientation.w = 1.0
         self._pending_final_goal_xy = None
+        self._active_frontier_path = []
+        self._active_frontier_final_goal_xy = None
+        self._reset_frontier_stall_monitor()
         self._last_planned_path = path
         self.get_logger().info(
             'pending final goal became reachable after FAST-LIO map update: '
@@ -1191,6 +1272,18 @@ class TerrainPctPlanner(Node):
     ) -> None:
         if not self._frontier_replan_enabled or self._terrain_map_source != 'slam_cloud':
             return
+        if should_hold_active_frontier_path(
+            active_path=self._active_frontier_path,
+            current_xy=start_xy,
+            goal_tolerance=self._direct_goal_tolerance,
+            active_final_goal_xy=self._active_frontier_final_goal_xy,
+            final_goal_xy=final_goal_xy,
+            final_goal_tolerance=self._duplicate_goal_xy_tolerance,
+        ):
+            return
+        self._active_frontier_path = []
+        self._active_frontier_final_goal_xy = None
+        self._reset_frontier_stall_monitor()
         path = plan_slam_frontier_path(
             self._graph,
             start_xy,
@@ -1200,12 +1293,19 @@ class TerrainPctPlanner(Node):
             max_path_distance=self._frontier_max_path_distance,
             blocked_points=self._frontier_blocked_points_from_scan(),
             obstacle_clearance=self._frontier_obstacle_clearance,
+            avoid_points=self._frontier_avoid_points,
+            avoid_clearance=self._frontier_failed_clearance,
             target_z=self._frontier_target_z,
         )
         if not path:
             return
         self._pending_final_goal_xy = final_goal_xy
         self._last_planned_path = path
+        self._active_frontier_path = path
+        self._active_frontier_final_goal_xy = final_goal_xy
+        self._frontier_stall_start_xy = start_xy
+        self._frontier_stall_start_time_ns = self.get_clock().now().nanoseconds
+        self._frontier_stall_commanded_motion = False
         msg = PoseStamped()
         msg.header.frame_id = self._world_frame
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -1378,11 +1478,21 @@ class TerrainPctPlanner(Node):
             return
 
         current_x, current_y, current_yaw, _ = self._current_planar_pose()
+        if self._release_stalled_frontier_if_needed((current_x, current_y)):
+            return
         goal = self._direct_path[-1]
         goal_distance = math.hypot(goal.x - current_x, goal.y - current_y)
         if goal_distance <= max(0.0, self._direct_goal_tolerance):
             self._direct_path = []
             self._direct_target_index = 0
+            if not should_hold_active_frontier_path(
+                active_path=self._active_frontier_path,
+                current_xy=(current_x, current_y),
+                goal_tolerance=self._direct_goal_tolerance,
+            ):
+                self._active_frontier_path = []
+                self._active_frontier_final_goal_xy = None
+                self._reset_frontier_stall_monitor()
             self._publish_direct_stop()
             self.get_logger().info('terrain direct tracking goal reached')
             return
@@ -1413,7 +1523,50 @@ class TerrainPctPlanner(Node):
             -self._direct_max_angular_speed,
             self._direct_max_angular_speed,
         )
+        if abs(twist.linear.x) > 1e-4 or abs(twist.angular.z) > 1e-4:
+            self._frontier_stall_commanded_motion = True
         self._direct_cmd_vel_publisher.publish(twist)
+
+    def _release_stalled_frontier_if_needed(
+        self,
+        current_xy: tuple[float, float],
+    ) -> bool:
+        if self._frontier_stall_start_time_ns is None:
+            return False
+        elapsed_sec = (
+            self.get_clock().now().nanoseconds - self._frontier_stall_start_time_ns
+        ) / 1_000_000_000.0
+        if not should_release_stalled_frontier_path(
+            active_path=self._active_frontier_path,
+            commanded_motion=self._frontier_stall_commanded_motion,
+            current_xy=current_xy,
+            monitor_start_xy=self._frontier_stall_start_xy,
+            elapsed_sec=elapsed_sec,
+            min_progress=self._frontier_stall_min_progress,
+            timeout_sec=self._frontier_stall_timeout_sec,
+        ):
+            return False
+        stalled_goal = self._active_frontier_path[-1]
+        self._frontier_avoid_points.append((stalled_goal.x, stalled_goal.y))
+        self._frontier_avoid_points = self._frontier_avoid_points[-8:]
+        self._active_frontier_path = []
+        self._active_frontier_final_goal_xy = None
+        self._direct_path = []
+        self._direct_target_index = 0
+        self._reset_frontier_stall_monitor()
+        self._publish_direct_stop()
+        self.get_logger().warning(
+            'released stalled FAST-LIO frontier path: '
+            f'frontier=({stalled_goal.x:.2f},{stalled_goal.y:.2f})'
+        )
+        if self._pending_final_goal_xy is not None:
+            self._try_pending_final_goal()
+        return True
+
+    def _reset_frontier_stall_monitor(self) -> None:
+        self._frontier_stall_start_xy = None
+        self._frontier_stall_start_time_ns = None
+        self._frontier_stall_commanded_motion = False
 
     def _advance_direct_target(self, current_x: float, current_y: float) -> None:
         while self._direct_target_index < len(self._direct_path) - 1:
