@@ -85,8 +85,10 @@ FAST-LIO2 map-planning boundary:
 - When a requested SLAM-cloud goal is not yet reachable, the planner can publish
   a FAST-LIO exploration-frontier path inside the current reachable component.
   It preserves the original final goal and retries it after later `/Laser_map`
-  graph rebuilds. This is the current bridge toward unknown-environment
-  map-progress planning.
+  graph rebuilds. If the final goal is still unreachable after a rebuild, it
+  refreshes the frontier path from the current robot pose instead of keeping a
+  stale one. This is the current bridge toward unknown-environment map-progress
+  planning.
 - SLAM-cloud graph construction filters low traversable clusters when the same
   grid cell contains a multi-layer vertical point stack above them. This reduces
   false traversability through obstacle bases in raw FAST-LIO maps.

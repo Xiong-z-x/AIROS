@@ -450,7 +450,8 @@ Implemented:
 - If the final goal is not yet reachable in the current SLAM graph,
   `terrain_pct_planner` can publish a FAST-LIO exploration-frontier path inside
   the reachable component and keep the original final goal pending for later
-  `/Laser_map` rebuilds.
+  `/Laser_map` rebuilds. If a rebuild still cannot reach the final goal, the
+  planner refreshes the frontier path from the current robot pose.
 - SLAM-cloud graph construction now filters low surface clusters under
   multi-layer vertical point stacks, so obstacle bases are not treated as
   traversable ground in narrow point-cloud passages.
@@ -478,6 +479,9 @@ Runtime smoke evidence:
   `(6.0, 13.0)` produced a frontier `/pct_path` with 85 poses from
   `(-0.127, -10.002, -0.400)` to `(4.832, 10.958, -0.400)` inside the current
   reachable SLAM component.
+- A refresh smoke kept `(6.0, 13.0)` pending and observed multiple subsequent
+  `/pct_path` frontier events after FAST-LIO graph rebuilds, including path
+  endpoints near `(0.005, 12.096)`, `(4.752, 10.718)`, and `(4.907, 11.286)`.
 - With `terrain_send_nav2_goals:=true` and `terrain_execution_mode:=direct`,
   the same frontier goal started direct tracking and produced `/cmd_vel_nav`
   (`linear.x=0.0350`, `angular.z=0.2800` in the smoke probe).

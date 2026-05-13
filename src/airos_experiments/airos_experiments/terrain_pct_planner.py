@@ -881,23 +881,9 @@ class TerrainPctPlanner(Node):
         start_x, start_y, start_z = self._current_pose()
         if self._initial_planner_xy is None:
             self._initial_planner_xy = (start_x, start_y)
-        terrain_start_z = _surface_z_reference(
-            odom_z=start_z,
-            current_xy=(start_x, start_y),
-            initial_xy=self._initial_planner_xy,
-            initial_surface_z_hint=self._initial_surface_z_hint,
-            initial_surface_hint_radius=self._initial_surface_hint_radius,
-            last_path=self._last_planned_path,
-            last_path_surface_hint_radius=self._last_path_surface_hint_radius,
-        )
-        terrain_start_z = (
-            _surface_height_at_xy(
-                self._graph.nodes,
-                (start_x, start_y),
-                z_hint=terrain_start_z,
-                max_xy_distance=self._initial_surface_hint_radius,
-            )
-            or terrain_start_z
+        terrain_start_z = self._terrain_surface_z_for_pose(
+            (start_x, start_y),
+            start_z,
         )
         goal_x = float(msg.pose.position.x)
         goal_y = float(msg.pose.position.y)
@@ -940,23 +926,11 @@ class TerrainPctPlanner(Node):
         if self._pending_final_goal_xy is None or self._odom_msg is None:
             return
         start_x, start_y, start_z = self._current_pose()
-        terrain_start_z = _surface_z_reference(
-            odom_z=start_z,
-            current_xy=(start_x, start_y),
-            initial_xy=self._initial_planner_xy,
-            initial_surface_z_hint=self._initial_surface_z_hint,
-            initial_surface_hint_radius=self._initial_surface_hint_radius,
-            last_path=self._last_planned_path,
-            last_path_surface_hint_radius=self._last_path_surface_hint_radius,
-        )
-        terrain_start_z = (
-            _surface_height_at_xy(
-                self._graph.nodes,
-                (start_x, start_y),
-                z_hint=terrain_start_z,
-                max_xy_distance=self._initial_surface_hint_radius,
-            )
-            or terrain_start_z
+        if self._initial_planner_xy is None:
+            self._initial_planner_xy = (start_x, start_y)
+        terrain_start_z = self._terrain_surface_z_for_pose(
+            (start_x, start_y),
+            start_z,
         )
         goal_x, goal_y = self._pending_final_goal_xy
         path = plan_terrain_path(
@@ -968,6 +942,11 @@ class TerrainPctPlanner(Node):
             max_goal_xy_distance=self._goal_snap_max_distance,
         )
         if not path:
+            self._plan_frontier_toward_goal(
+                start_xy=(start_x, start_y),
+                start_z=terrain_start_z,
+                final_goal_xy=(goal_x, goal_y),
+            )
             return
         msg = PoseStamped()
         msg.header.frame_id = self._world_frame
@@ -982,6 +961,31 @@ class TerrainPctPlanner(Node):
             f'goal=({goal_x:.2f},{goal_y:.2f}) path_nodes={len(path)}'
         )
         self._publish_and_execute_path(path, msg)
+
+    def _terrain_surface_z_for_pose(
+        self,
+        current_xy: tuple[float, float],
+        odom_z: float,
+    ) -> float:
+        terrain_start_z = _surface_z_reference(
+            odom_z=odom_z,
+            current_xy=current_xy,
+            initial_xy=self._initial_planner_xy,
+            initial_surface_z_hint=self._initial_surface_z_hint,
+            initial_surface_hint_radius=self._initial_surface_hint_radius,
+            last_path=self._last_planned_path,
+            last_path_surface_hint_radius=self._last_path_surface_hint_radius,
+        )
+        terrain_start_z = (
+            _surface_height_at_xy(
+                self._graph.nodes,
+                current_xy,
+                z_hint=terrain_start_z,
+                max_xy_distance=self._initial_surface_hint_radius,
+            )
+            or terrain_start_z
+        )
+        return terrain_start_z
 
     def _plan_frontier_toward_goal(
         self,
