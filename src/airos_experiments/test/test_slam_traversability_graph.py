@@ -314,6 +314,63 @@ def test_slam_frontier_path_requires_progress_from_start() -> None:
     assert path == []
 
 
+def test_slam_frontier_path_limits_exploration_to_short_rolling_step() -> None:
+    nodes = [
+        TerrainNode(index, float(index), 0.0, 0.0, 'slam_floor', 1.0)
+        for index in range(9)
+    ]
+    adjacency: list[list[tuple[int, float]]] = [[] for _ in nodes]
+    for index in range(len(nodes) - 1):
+        adjacency[index].append((index + 1, 1.0))
+        adjacency[index + 1].append((index, 1.0))
+    graph = TerrainGraph(nodes=nodes, adjacency=adjacency, terrain_cloud=[])
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(20.0, 0.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=2.5,
+    )
+
+    assert [node.index for node in path] == [0, 1, 2]
+
+
+def test_slam_frontier_path_uses_live_obstacle_points_to_avoid_wall_gap() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 0.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -0.7, -0.5, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -0.7, 0.5, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0), (3, 0.9)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0), (4, 0.9)],
+            [(0, 0.9), (4, 1.0)],
+            [(3, 1.0), (2, 0.9)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -1.0),
+        goal_xy=(0.0, 2.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=3.0,
+        blocked_points=[(0.0, 0.0)],
+        obstacle_clearance=0.35,
+    )
+
+    assert [node.index for node in path] == [0, 3, 4, 2]
+
+
 def test_slam_graph_routes_around_vertical_obstacle_cells() -> None:
     points: list[tuple[float, float, float]] = []
     for x in (0.0, 0.25, 0.50, 0.75, 1.00):
@@ -335,6 +392,38 @@ def test_slam_graph_routes_around_vertical_obstacle_cells() -> None:
         graph,
         start_xy=(0.0, 0.0),
         goal_xy=(1.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='nearest_z',
+    )
+
+    assert path == []
+
+
+def test_slam_graph_rejects_sparse_edges_through_wall_base_cell() -> None:
+    points: list[tuple[float, float, float]] = [
+        (-0.05, -0.25, 0.0),
+        (0.05, -0.25, 0.0),
+        (-0.05, 0.25, 0.0),
+        (0.05, 0.25, 0.0),
+        (-0.05, 0.0, 0.0),
+        (0.05, 0.0, 0.0),
+    ]
+    for z in (0.42, 0.50, 0.58):
+        for x in (-0.04, 0.04):
+            points.append((x, 0.0, z))
+
+    graph = build_slam_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.25,
+        min_cell_points=1,
+        vertical_layer_gap=0.18,
+        max_slope_grade=0.75,
+        max_step_height=0.34,
+    )
+    path = plan_slam_graph_path(
+        graph,
+        start_xy=(0.0, -0.25),
+        goal_xy=(0.0, 0.25),
         start_z=0.0,
         goal_z_policy='nearest_z',
     )

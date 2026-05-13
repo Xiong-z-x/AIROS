@@ -83,20 +83,30 @@ FAST-LIO2 map-planning boundary:
   outside the currently mapped SLAM coverage instead of snapping to a wrong
   floor or map boundary.
 - When a requested SLAM-cloud goal is not yet reachable, the planner can publish
-  a FAST-LIO exploration-frontier path inside the current reachable component.
-  It preserves the original final goal and retries it after later `/Laser_map`
-  graph rebuilds. If the final goal is still unreachable after a rebuild, it
-  refreshes the frontier path from the current robot pose instead of keeping a
-  stale one. This is the current bridge toward unknown-environment map-progress
-  planning.
+  a bounded FAST-LIO exploration-frontier path inside the current reachable
+  component. It preserves the original final goal and retries it after later
+  `/Laser_map` graph rebuilds. If the final goal is still unreachable after a
+  rebuild, it refreshes the frontier path from the current robot pose instead
+  of keeping a stale one. The default launch keeps frontier paths between
+  1.0 m and 2.0 m of graph distance, so exploration advances as short rolling
+  steps rather than a long command to a far frontier.
+- The frontier planner also fuses live `/scan` obstacle points as temporary
+  blocked graph nodes. This is required because runtime evidence showed that
+  FAST-LIO2 `/Laser_map` may retain traversable floor while dropping nearby
+  vertical wall returns from the current frame; planning from `/Laser_map`
+  alone can therefore produce a path that the collision monitor correctly
+  stops.
 - SLAM-cloud graph construction filters low traversable clusters when the same
-  grid cell contains a multi-layer vertical point stack above them. This reduces
-  false traversability through obstacle bases in raw FAST-LIO maps.
+  grid cell contains a multi-layer or vertically thick point stack above them.
+  This reduces false traversability through obstacle bases in raw FAST-LIO maps.
 - Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
-  works. For an initially unreachable cross-level target, the planner now
-  publishes an exploration-frontier path toward the target and can drive the
-  robot along it, but complete cross-level arrival is not yet accepted because
-  the live FAST-LIO map must still be expanded and reconnected by motion.
+  works. For an initially unreachable cross-level target, the planner publishes
+  rolling exploration-frontier paths toward the target and can drive the robot
+  along them. A scan-fused smoke increased minimum scan clearance near the
+  problematic lower-floor wall from about 0.151 m to about 0.48 m, with
+  non-zero `/cmd_vel_nav` and about 1.12 m odometry motion. Complete cross-level
+  arrival is still not accepted because the live FAST-LIO map must be expanded,
+  reconnected, and followed to the high-floor target in one acceptance run.
 - Therefore the complete FAST-LIO2 SLAM -> cross-level planning -> motion
   closed loop remains a next upgrade task, not a completed claim.
 

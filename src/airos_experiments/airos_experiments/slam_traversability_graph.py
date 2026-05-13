@@ -258,15 +258,25 @@ def _blocked_low_cluster_indexes(
         stacked_points = 0
         stacked_layers = 0
         top_z = lower_z
+        max_upper_span = 0.0
         for upper in clusters[lower_index + 1:]:
             if len(upper) < min_points:
                 continue
             upper_z = sum(point[2] for point in upper) / len(upper)
             if upper_z <= lower_z + max(0.18, max_step_height * 0.55):
                 continue
+            upper_zs = [point[2] for point in upper]
+            max_upper_span = max(max_upper_span, max(upper_zs) - min(upper_zs))
             stacked_layers += 1
             stacked_points += len(upper)
             top_z = max(top_z, upper_z)
+        if (
+            stacked_points >= max(2, min_points * 2)
+            and top_z - lower_z >= max(0.45, max_step_height * 1.2)
+            and max_upper_span >= max(0.10, max_step_height * 0.25)
+        ):
+            blocked.add(lower_index)
+            continue
         if (
             stacked_layers >= 2
             and stacked_points >= max(3, min_points * 3)

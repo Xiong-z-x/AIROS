@@ -68,6 +68,10 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'goal_snap_max_distance': 1.0" in launch_text
     assert "'frontier_replan_enabled': True" in launch_text
     assert "'frontier_min_path_distance': 1.0" in launch_text
+    assert "'frontier_max_path_distance': 2.0" in launch_text
+    assert "'frontier_obstacle_scan_topic': '/scan'" in launch_text
+    assert "'frontier_obstacle_clearance': 0.45" in launch_text
+    assert "'frontier_obstacle_range_max': 3.0" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
     assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text

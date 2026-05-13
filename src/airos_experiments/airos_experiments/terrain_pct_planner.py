@@ -21,7 +21,7 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import LaserScan, PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
 
@@ -245,6 +245,9 @@ def plan_slam_frontier_path(
     goal_xy: tuple[float, float],
     start_z: float = 0.0,
     min_path_distance: float = 1.0,
+    max_path_distance: float = math.inf,
+    blocked_points: Optional[list[tuple[float, float]]] = None,
+    obstacle_clearance: float = 0.0,
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
@@ -259,6 +262,12 @@ def plan_slam_frontier_path(
 
     distances = [math.inf] * len(graph.nodes)
     parents: list[Optional[int]] = [None] * len(graph.nodes)
+    blocked_nodes = _nodes_near_blocked_points(
+        graph.nodes,
+        blocked_points or [],
+        obstacle_clearance,
+    )
+    blocked_nodes.discard(start_index)
     distances[start_index] = 0.0
     queue: list[tuple[float, int]] = [(0.0, start_index)]
     visited: list[int] = []
@@ -267,8 +276,12 @@ def plan_slam_frontier_path(
         current_distance, current = heapq.heappop(queue)
         if current_distance > distances[current]:
             continue
+        if current in blocked_nodes:
+            continue
         visited.append(current)
         for neighbor, edge_cost in graph.adjacency[current]:
+            if neighbor in blocked_nodes:
+                continue
             next_distance = current_distance + edge_cost
             if next_distance >= distances[neighbor]:
                 continue
@@ -276,13 +289,22 @@ def plan_slam_frontier_path(
             parents[neighbor] = current
             heapq.heappush(queue, (next_distance, neighbor))
 
+    min_distance = max(0.0, min_path_distance)
+    max_distance = max(min_distance, max_path_distance)
     candidates = [
         index
         for index in visited
-        if distances[index] >= max(0.0, min_path_distance)
+        if distances[index] >= min_distance
     ]
     if not candidates:
         return []
+    bounded_candidates = [
+        index
+        for index in candidates
+        if distances[index] <= max_distance
+    ]
+    if bounded_candidates:
+        candidates = bounded_candidates
 
     goal_distance_from_start = math.hypot(
         goal_xy[0] - start_xy[0],
@@ -315,6 +337,25 @@ def plan_slam_frontier_path(
         cursor = parents[cursor]
     path.reverse()
     return path
+
+
+def _nodes_near_blocked_points(
+    nodes: list[TerrainNode],
+    blocked_points: list[tuple[float, float]],
+    obstacle_clearance: float,
+) -> set[int]:
+    if not blocked_points or obstacle_clearance <= 0.0:
+        return set()
+    clearance_sq = obstacle_clearance * obstacle_clearance
+    blocked: set[int] = set()
+    for node in nodes:
+        for point_x, point_y in blocked_points:
+            dx = node.x - point_x
+            dy = node.y - point_y
+            if dx * dx + dy * dy <= clearance_sq:
+                blocked.add(node.index)
+                break
+    return blocked
 
 
 def _goal_progress(
@@ -553,6 +594,10 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('goal_snap_max_distance', 1.0)
         self.declare_parameter('frontier_replan_enabled', True)
         self.declare_parameter('frontier_min_path_distance', 1.0)
+        self.declare_parameter('frontier_max_path_distance', 2.0)
+        self.declare_parameter('frontier_obstacle_scan_topic', '/scan')
+        self.declare_parameter('frontier_obstacle_clearance', 0.45)
+        self.declare_parameter('frontier_obstacle_range_max', 3.0)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         self._world_frame = str(self.get_parameter('world_frame').value)
@@ -642,6 +687,15 @@ class TerrainPctPlanner(Node):
         self._frontier_min_path_distance = float(
             self.get_parameter('frontier_min_path_distance').value
         )
+        self._frontier_max_path_distance = float(
+            self.get_parameter('frontier_max_path_distance').value
+        )
+        self._frontier_obstacle_clearance = float(
+            self.get_parameter('frontier_obstacle_clearance').value
+        )
+        self._frontier_obstacle_range_max = float(
+            self.get_parameter('frontier_obstacle_range_max').value
+        )
         self._use_initial_pose_anchor = bool(
             self.get_parameter('use_initial_pose_anchor').value
         )
@@ -688,6 +742,7 @@ class TerrainPctPlanner(Node):
         )
         self._graph = TerrainGraph(nodes=[], adjacency=[], terrain_cloud=[])
         self._slam_map_msg: Optional[PointCloud2] = None
+        self._scan_msg: Optional[LaserScan] = None
         self._last_slam_map_stamp: Optional[tuple[int, int]] = None
         self._last_slam_graph_stamp: Optional[tuple[int, int]] = None
         self._slam_graph_rebuild_in_progress = False
@@ -718,6 +773,12 @@ class TerrainPctPlanner(Node):
             Odometry,
             str(self.get_parameter('odom_topic').value),
             self._odom_callback,
+            live_qos,
+        )
+        self._scan_subscription = self.create_subscription(
+            LaserScan,
+            str(self.get_parameter('frontier_obstacle_scan_topic').value),
+            self._scan_callback,
             live_qos,
         )
         self._initial_pose_subscription = self.create_subscription(
@@ -810,6 +871,9 @@ class TerrainPctPlanner(Node):
             int(msg.header.stamp.sec),
             int(msg.header.stamp.nanosec),
         )
+
+    def _scan_callback(self, msg: LaserScan) -> None:
+        self._scan_msg = msg
 
     def _rebuild_slam_graph(self) -> None:
         if self._terrain_map_source != 'slam_cloud':
@@ -1002,6 +1066,9 @@ class TerrainPctPlanner(Node):
             final_goal_xy,
             start_z=start_z,
             min_path_distance=self._frontier_min_path_distance,
+            max_path_distance=self._frontier_max_path_distance,
+            blocked_points=self._frontier_blocked_points_from_scan(),
+            obstacle_clearance=self._frontier_obstacle_clearance,
         )
         if not path:
             return
@@ -1020,6 +1087,33 @@ class TerrainPctPlanner(Node):
             f'path_nodes={len(path)}'
         )
         self._publish_and_execute_path(path, msg)
+
+    def _frontier_blocked_points_from_scan(self) -> list[tuple[float, float]]:
+        if self._scan_msg is None:
+            return []
+        base_x, base_y, base_yaw, _ = self._current_planar_pose()
+        range_limit = max(0.0, self._frontier_obstacle_range_max)
+        if range_limit <= 0.0:
+            return []
+        blocked: list[tuple[float, float]] = []
+        angle = float(self._scan_msg.angle_min)
+        increment = float(self._scan_msg.angle_increment)
+        max_range = min(float(self._scan_msg.range_max), range_limit)
+        for distance in self._scan_msg.ranges:
+            if (
+                math.isfinite(distance)
+                and distance >= float(self._scan_msg.range_min)
+                and distance <= max_range
+            ):
+                world_angle = base_yaw + angle
+                blocked.append(
+                    (
+                        base_x + math.cos(world_angle) * distance,
+                        base_y + math.sin(world_angle) * distance,
+                    )
+                )
+            angle += increment
+        return blocked
 
     def _publish_and_execute_path(
         self,

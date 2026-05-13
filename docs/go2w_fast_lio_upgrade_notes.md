@@ -452,9 +452,20 @@ Implemented:
   the reachable component and keep the original final goal pending for later
   `/Laser_map` rebuilds. If a rebuild still cannot reach the final goal, the
   planner refreshes the frontier path from the current robot pose.
+- FAST-LIO exploration-frontier paths are bounded by
+  `frontier_min_path_distance:=1.0` and `frontier_max_path_distance:=2.0` in the
+  default visual launch. This prevents the controller from chasing a far
+  frontier in one command before the live SLAM map has expanded.
+- Frontier planning fuses live `/scan` obstacle points through
+  `frontier_obstacle_scan_topic:=/scan`,
+  `frontier_obstacle_clearance:=0.45`, and
+  `frontier_obstacle_range_max:=3.0`. This is intentionally local and
+  temporary: `/Laser_map` remains the SLAM map source, while `/scan` blocks
+  nearby frontier graph nodes that FAST-LIO2 did not preserve as vertical
+  obstacles in the map output.
 - SLAM-cloud graph construction now filters low surface clusters under
-  multi-layer vertical point stacks, so obstacle bases are not treated as
-  traversable ground in narrow point-cloud passages.
+  multi-layer or vertically thick point stacks, so obstacle bases are not
+  treated as traversable ground in narrow point-cloud passages.
 - Regression coverage includes synthetic floor -> ramp -> platform routing,
   direct platform-edge drop rejection, sparse same-level routing from the spawn
   area, large-world spawn -> third-level routing on a complete sampled point
@@ -485,6 +496,19 @@ Runtime smoke evidence:
 - With `terrain_send_nav2_goals:=true` and `terrain_execution_mode:=direct`,
   the same frontier goal started direct tracking and produced `/cmd_vel_nav`
   (`linear.x=0.0350`, `angular.z=0.2800` in the smoke probe).
+- A later 75 s direct-control probe proved the partial closed loop is real but
+  not yet complete: FAST-LIO graph nodes grew from about 5659 to about 7300,
+  `/pct_path` refreshed 22 times, `/cmd_vel_nav` produced 847 non-zero command
+  samples, and odometry moved about 1.20 m. The run then exposed the next
+  bottleneck: long frontier paths near 80 nodes repeatedly led into the
+  `/scan` collision monitor's SlowZone/StopZone. The planner now uses bounded
+  rolling frontier paths to address that specific failure mode.
+- A later root-cause probe showed the lower-floor wall was visible in the raw
+  `/livox/lidar_points` current frame but not retained as high wall points in
+  `/cloud_registered` or `/Laser_map` near the robot. The scan-fused frontier
+  smoke then produced 12 short `/pct_path` refreshes, 416 non-zero
+  `/cmd_vel_nav` samples, about 1.124 m odometry motion, and a minimum scan
+  clearance of about 0.478 m instead of the previous 0.151 m stop-zone case.
 
 Remaining limitation:
 
