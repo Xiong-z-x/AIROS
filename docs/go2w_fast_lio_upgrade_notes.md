@@ -447,10 +447,15 @@ Implemented:
   `goal_snap_max_distance:=1.0`, so same-level goals can fall back from an
   unreachable high point to a reachable floor point, while targets outside the
   current SLAM-map coverage are rejected instead of producing a false path.
+- If the final goal is not yet reachable in the current SLAM graph,
+  `terrain_pct_planner` can publish a FAST-LIO exploration-frontier path inside
+  the reachable component and keep the original final goal pending for later
+  `/Laser_map` rebuilds.
 - Regression coverage includes synthetic floor -> ramp -> platform routing,
   direct platform-edge drop rejection, sparse same-level routing from the spawn
   area, large-world spawn -> third-level routing on a complete sampled point
-  cloud, adaptive goal-height fallback, and out-of-coverage goal rejection.
+  cloud, adaptive goal-height fallback, out-of-coverage goal rejection, and
+  reachable-component frontier planning.
 
 Runtime smoke evidence:
 
@@ -466,12 +471,20 @@ Runtime smoke evidence:
   This is the intended behavior for the current map state because the nearest
   SLAM graph point was outside the 1.0 m goal snap limit and in a disconnected
   component.
+- With FAST-LIO exploration frontier enabled, publishing `/terrain_goal_pose` at
+  `(6.0, 13.0)` produced a frontier `/pct_path` with 85 poses from
+  `(-0.127, -10.002, -0.400)` to `(4.832, 10.958, -0.400)` inside the current
+  reachable SLAM component.
+- With `terrain_send_nav2_goals:=true` and `terrain_execution_mode:=direct`,
+  the same frontier goal started direct tracking and produced `/cmd_vel_nav`
+  (`linear.x=0.0350`, `angular.z=0.2800` in the smoke probe).
 
 Remaining limitation:
 
 - This is not yet a fully accepted cross-level FAST-LIO2 navigation chain.
   The complete sampled point-cloud graph can route from the spawn area to the
   third level in tests, but the live FAST-LIO local map at startup does not yet
-  cover and connect the high-floor goal region. The remaining work is active
-  exploration / map-progress replanning plus cross-level execution, not basic
-  `/Laser_map` publishing.
+  cover and connect the high-floor goal region. The current runtime can move
+  toward a reachable frontier and keep the final goal pending, but it still
+  needs an end-to-end acceptance run proving that motion expands the FAST-LIO
+  map enough to replan and reach the requested high floor.

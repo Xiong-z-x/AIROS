@@ -82,10 +82,16 @@ FAST-LIO2 map-planning boundary:
   FAST-LIO clouds connected enough for same-level goals while rejecting goals
   outside the currently mapped SLAM coverage instead of snapping to a wrong
   floor or map boundary.
+- When a requested SLAM-cloud goal is not yet reachable, the planner can publish
+  a FAST-LIO exploration-frontier path inside the current reachable component.
+  It preserves the original final goal and retries it after later `/Laser_map`
+  graph rebuilds. This is the current bridge toward unknown-environment
+  map-progress planning.
 - Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
-  works. The cross-level path from the spawn area to high floors is not yet
-  accepted because the current local FAST-LIO map does not yet cover and connect
-  the requested high-floor goal region from the spawn area.
+  works. For an initially unreachable cross-level target, the planner now
+  publishes an exploration-frontier path toward the target and can drive the
+  robot along it, but complete cross-level arrival is not yet accepted because
+  the live FAST-LIO map must still be expanded and reconnected by motion.
 - Therefore the complete FAST-LIO2 SLAM -> cross-level planning -> motion
   closed loop remains a next upgrade task, not a completed claim.
 

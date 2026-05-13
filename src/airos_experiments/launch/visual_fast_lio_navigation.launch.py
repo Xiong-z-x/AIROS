@@ -214,6 +214,8 @@ def generate_launch_description():
             'max_step_height': 0.36,
             'goal_z_policy': 'adaptive',
             'goal_snap_max_distance': 1.0,
+            'frontier_replan_enabled': True,
+            'frontier_min_path_distance': 1.0,
             'send_nav2_goals': LaunchConfiguration('terrain_send_nav2_goals'),
             'nav_execution_mode': LaunchConfiguration('terrain_execution_mode'),
             'direct_cmd_vel_topic': '/cmd_vel_nav',

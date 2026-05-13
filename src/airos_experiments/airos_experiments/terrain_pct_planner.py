@@ -239,6 +239,99 @@ def plan_terrain_path(
     return []
 
 
+def plan_slam_frontier_path(
+    graph: TerrainGraph,
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    start_z: float = 0.0,
+    min_path_distance: float = 1.0,
+) -> list[TerrainNode]:
+    if not graph.nodes:
+        return []
+    start_index = _nearest_node(
+        graph.nodes,
+        start_xy,
+        z_reference=start_z,
+        policy='nearest_z',
+    )
+    if start_index is None:
+        return []
+
+    distances = [math.inf] * len(graph.nodes)
+    parents: list[Optional[int]] = [None] * len(graph.nodes)
+    distances[start_index] = 0.0
+    queue: list[tuple[float, int]] = [(0.0, start_index)]
+    visited: list[int] = []
+
+    while queue:
+        current_distance, current = heapq.heappop(queue)
+        if current_distance > distances[current]:
+            continue
+        visited.append(current)
+        for neighbor, edge_cost in graph.adjacency[current]:
+            next_distance = current_distance + edge_cost
+            if next_distance >= distances[neighbor]:
+                continue
+            distances[neighbor] = next_distance
+            parents[neighbor] = current
+            heapq.heappush(queue, (next_distance, neighbor))
+
+    candidates = [
+        index
+        for index in visited
+        if distances[index] >= max(0.0, min_path_distance)
+    ]
+    if not candidates:
+        return []
+
+    goal_distance_from_start = math.hypot(
+        goal_xy[0] - start_xy[0],
+        goal_xy[1] - start_xy[1],
+    )
+    best_index = min(
+        candidates,
+        key=lambda index: (
+            math.hypot(graph.nodes[index].x - goal_xy[0], graph.nodes[index].y - goal_xy[1]),
+            -_goal_progress(
+                start_xy,
+                goal_xy,
+                (graph.nodes[index].x, graph.nodes[index].y),
+                goal_distance_from_start,
+            ),
+        ),
+    )
+    if _goal_progress(
+        start_xy,
+        goal_xy,
+        (graph.nodes[best_index].x, graph.nodes[best_index].y),
+        goal_distance_from_start,
+    ) <= 0.0:
+        return []
+
+    path: list[TerrainNode] = []
+    cursor: Optional[int] = best_index
+    while cursor is not None:
+        path.append(graph.nodes[cursor])
+        cursor = parents[cursor]
+    path.reverse()
+    return path
+
+
+def _goal_progress(
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    candidate_xy: tuple[float, float],
+    goal_distance_from_start: float,
+) -> float:
+    if goal_distance_from_start <= 1e-6:
+        return 0.0
+    ux = (goal_xy[0] - start_xy[0]) / goal_distance_from_start
+    uy = (goal_xy[1] - start_xy[1]) / goal_distance_from_start
+    return (candidate_xy[0] - start_xy[0]) * ux + (
+        candidate_xy[1] - start_xy[1]
+    ) * uy
+
+
 def _goal_search_policies(goal_z_policy: str) -> list[str]:
     if goal_z_policy == 'adaptive':
         return ['highest', 'nearest_z', 'lowest']
@@ -458,6 +551,8 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('duplicate_goal_xy_tolerance', 0.05)
         self.declare_parameter('duplicate_goal_time_sec', 1.5)
         self.declare_parameter('goal_snap_max_distance', 1.0)
+        self.declare_parameter('frontier_replan_enabled', True)
+        self.declare_parameter('frontier_min_path_distance', 1.0)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         self._world_frame = str(self.get_parameter('world_frame').value)
@@ -540,6 +635,12 @@ class TerrainPctPlanner(Node):
         )
         self._goal_snap_max_distance = float(
             self.get_parameter('goal_snap_max_distance').value
+        )
+        self._frontier_replan_enabled = bool(
+            self.get_parameter('frontier_replan_enabled').value
+        )
+        self._frontier_min_path_distance = float(
+            self.get_parameter('frontier_min_path_distance').value
         )
         self._use_initial_pose_anchor = bool(
             self.get_parameter('use_initial_pose_anchor').value
@@ -672,6 +773,7 @@ class TerrainPctPlanner(Node):
         self._initial_planner_xy: Optional[tuple[float, float]] = None
         self._last_goal_xy: Optional[tuple[float, float]] = None
         self._last_goal_time_ns: Optional[int] = None
+        self._pending_final_goal_xy: Optional[tuple[float, float]] = None
         self._last_planned_path: list[TerrainNode] = []
         self._direct_path: list[TerrainNode] = []
         self._direct_target_index = 0
@@ -745,6 +847,7 @@ class TerrainPctPlanner(Node):
             f'nodes={len(self._graph.nodes)} '
             f'edges={sum(len(edges) for edges in self._graph.adjacency)}'
         )
+        self._try_pending_final_goal()
 
     def _initial_pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         if not self._use_initial_pose_anchor:
@@ -823,16 +926,111 @@ class TerrainPctPlanner(Node):
             )
             if diagnostics:
                 self.get_logger().warning(diagnostics)
+            self._plan_frontier_toward_goal(
+                start_xy=(start_x, start_y),
+                start_z=terrain_start_z,
+                final_goal_xy=(goal_x, goal_y),
+            )
             return
+        self._pending_final_goal_xy = None
         self._last_planned_path = path
+        self._publish_and_execute_path(path, msg)
+
+    def _try_pending_final_goal(self) -> None:
+        if self._pending_final_goal_xy is None or self._odom_msg is None:
+            return
+        start_x, start_y, start_z = self._current_pose()
+        terrain_start_z = _surface_z_reference(
+            odom_z=start_z,
+            current_xy=(start_x, start_y),
+            initial_xy=self._initial_planner_xy,
+            initial_surface_z_hint=self._initial_surface_z_hint,
+            initial_surface_hint_radius=self._initial_surface_hint_radius,
+            last_path=self._last_planned_path,
+            last_path_surface_hint_radius=self._last_path_surface_hint_radius,
+        )
+        terrain_start_z = (
+            _surface_height_at_xy(
+                self._graph.nodes,
+                (start_x, start_y),
+                z_hint=terrain_start_z,
+                max_xy_distance=self._initial_surface_hint_radius,
+            )
+            or terrain_start_z
+        )
+        goal_x, goal_y = self._pending_final_goal_xy
+        path = plan_terrain_path(
+            self._graph,
+            (start_x, start_y),
+            (goal_x, goal_y),
+            start_z=terrain_start_z,
+            goal_z_policy=self._goal_z_policy,
+            max_goal_xy_distance=self._goal_snap_max_distance,
+        )
+        if not path:
+            return
+        msg = PoseStamped()
+        msg.header.frame_id = self._world_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose.position.x = goal_x
+        msg.pose.position.y = goal_y
+        msg.pose.orientation.w = 1.0
+        self._pending_final_goal_xy = None
+        self._last_planned_path = path
+        self.get_logger().info(
+            'pending final goal became reachable after FAST-LIO map update: '
+            f'goal=({goal_x:.2f},{goal_y:.2f}) path_nodes={len(path)}'
+        )
+        self._publish_and_execute_path(path, msg)
+
+    def _plan_frontier_toward_goal(
+        self,
+        *,
+        start_xy: tuple[float, float],
+        start_z: float,
+        final_goal_xy: tuple[float, float],
+    ) -> None:
+        if not self._frontier_replan_enabled or self._terrain_map_source != 'slam_cloud':
+            return
+        path = plan_slam_frontier_path(
+            self._graph,
+            start_xy,
+            final_goal_xy,
+            start_z=start_z,
+            min_path_distance=self._frontier_min_path_distance,
+        )
+        if not path:
+            return
+        self._pending_final_goal_xy = final_goal_xy
+        self._last_planned_path = path
+        msg = PoseStamped()
+        msg.header.frame_id = self._world_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.pose.position.x = path[-1].x
+        msg.pose.position.y = path[-1].y
+        msg.pose.orientation.w = 1.0
+        self.get_logger().info(
+            'published FAST-LIO exploration frontier path toward pending goal: '
+            f'frontier=({path[-1].x:.2f},{path[-1].y:.2f}) '
+            f'final_goal=({final_goal_xy[0]:.2f},{final_goal_xy[1]:.2f}) '
+            f'path_nodes={len(path)}'
+        )
+        self._publish_and_execute_path(path, msg)
+
+    def _publish_and_execute_path(
+        self,
+        path: list[TerrainNode],
+        original_goal: PoseStamped,
+    ) -> None:
         self._publish_path(path)
-        if self._send_nav2_goals:
-            if self._nav_execution_mode == 'direct':
-                self._start_direct_tracking(path)
-            elif self._nav_execution_mode == 'follow_path':
-                self._send_follow_path_goal(path)
-            else:
-                self._send_waypoint_goal(path, msg)
+        if not self._send_nav2_goals:
+            return
+        if self._nav_execution_mode == 'direct':
+            self._start_direct_tracking(path)
+        elif self._nav_execution_mode == 'follow_path':
+            self._send_follow_path_goal(path)
+        else:
+            self._send_waypoint_goal(path, original_goal)
 
     def _is_duplicate_goal(self, goal_xy: tuple[float, float]) -> bool:
         now_ns = self.get_clock().now().nanoseconds

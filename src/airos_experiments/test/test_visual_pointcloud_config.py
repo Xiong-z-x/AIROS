@@ -66,6 +66,8 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
     assert "'goal_z_policy': 'adaptive'" in launch_text
     assert "'goal_snap_max_distance': 1.0" in launch_text
+    assert "'frontier_replan_enabled': True" in launch_text
+    assert "'frontier_min_path_distance': 1.0" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
     assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text

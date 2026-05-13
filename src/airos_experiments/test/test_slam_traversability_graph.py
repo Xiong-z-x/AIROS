@@ -14,7 +14,10 @@ from airos_experiments.slam_traversability_graph import (
     plan_slam_graph_path,
 )
 from airos_experiments.terrain_pct_planner import (
+    TerrainGraph,
+    TerrainNode,
     build_slam_terrain_graph_from_pointcloud,
+    plan_slam_frontier_path,
     plan_terrain_path,
 )
 
@@ -244,6 +247,68 @@ def test_terrain_planner_rejects_goal_outside_slam_map_coverage() -> None:
         start_z=0.0,
         goal_z_policy='adaptive',
         max_goal_xy_distance=1.0,
+    )
+
+    assert path == []
+
+
+def test_slam_frontier_path_stays_in_reachable_component_toward_goal() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 8.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, 9.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0)],
+            [(4, 1.0)],
+            [(3, 1.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    final_path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(9.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='adaptive',
+        max_goal_xy_distance=1.0,
+    )
+    frontier_path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(9.0, 0.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+    )
+
+    assert final_path == []
+    assert [node.index for node in frontier_path] == [0, 1, 2]
+
+
+def test_slam_frontier_path_requires_progress_from_start() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.2, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[[(1, 0.2)], [(0, 0.2)]],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(10.0, 0.0),
+        start_z=0.0,
+        min_path_distance=1.0,
     )
 
     assert path == []
