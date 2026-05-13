@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import math
+import struct
 from pathlib import Path
+
+from sensor_msgs.msg import PointCloud2, PointField
+from std_msgs.msg import Header
 
 from airos_experiments.sdf_geometry import (
     BoxCollision,
@@ -19,6 +23,8 @@ from airos_experiments.terrain_pct_planner import (
     _surface_z_reference,
     _waypoint_path,
     _waypoints_after_start_clearance,
+    build_slam_terrain_graph_from_pointcloud,
+    build_slam_terrain_graph_from_points,
     build_terrain_graph,
     plan_terrain_path,
 )
@@ -41,6 +47,141 @@ def _box_by_model(world_file: Path, model_name: str) -> BoxCollision:
         if isinstance(geometry, BoxCollision) and geometry.model_name == model_name:
             return geometry
     raise AssertionError(f'missing box model {model_name}')
+
+
+def _floor_ramp_deck_points() -> list[tuple[float, float, float]]:
+    points: list[tuple[float, float, float]] = []
+    for x in (-0.24, 0.0, 0.24):
+        for y in (-0.12, 0.0, 0.12):
+            points.append((x, y, 0.0))
+    for x, z in (
+        (0.50, 0.05),
+        (0.75, 0.14),
+        (1.00, 0.24),
+        (1.25, 0.34),
+        (1.50, 0.48),
+        (1.75, 0.66),
+        (2.00, 0.84),
+        (2.25, 1.00),
+    ):
+        for y in (-0.18, -0.06, 0.06, 0.18):
+            points.append((x, y, z))
+    for x in (2.50, 2.75, 3.00):
+        for y in (-0.12, 0.0, 0.12):
+            points.append((x, y, 1.00))
+    return points
+
+
+def _xyz_pointcloud(points: list[tuple[float, float, float]]) -> PointCloud2:
+    msg = PointCloud2()
+    msg.header = Header(frame_id='map')
+    msg.height = 1
+    msg.width = len(points)
+    msg.fields = [
+        PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+    ]
+    msg.is_bigendian = False
+    msg.point_step = 12
+    msg.row_step = msg.point_step * msg.width
+    msg.is_dense = True
+    msg.data = b''.join(struct.pack('<fff', *point) for point in points)
+    return msg
+
+
+def test_slam_terrain_graph_from_points_supports_floor_ramp_and_deck() -> None:
+    points = _floor_ramp_deck_points()
+
+    graph = build_slam_terrain_graph_from_points(
+        points,
+        grid_resolution=0.25,
+        max_slope_grade=0.60,
+        max_step_height=0.34,
+        max_surface_transition_height=0.20,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+    )
+    labels = {node.surface_label for node in graph.nodes}
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.75, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+    )
+
+    assert graph.nodes
+    assert path
+    assert any('floor' in label for label in labels)
+    assert any('ramp' in label for label in labels)
+    assert any('deck' in label for label in labels)
+    assert path[0].z <= 0.05
+    assert path[-1].z >= 0.95
+    assert any('ramp' in node.surface_label for node in path)
+
+
+def test_slam_terrain_graph_from_pointcloud_accepts_laser_map_xyz_fields() -> None:
+    graph = build_slam_terrain_graph_from_pointcloud(
+        _xyz_pointcloud(_floor_ramp_deck_points()),
+        grid_resolution=0.25,
+        max_slope_grade=0.60,
+        max_step_height=0.34,
+        max_surface_transition_height=0.20,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+        max_points=1000,
+    )
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.75, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+    )
+
+    assert path
+    assert path[0].z <= 0.05
+    assert path[-1].z >= 0.95
+    assert any('ramp' in node.surface_label for node in path)
+
+
+def test_slam_terrain_graph_allows_step_sized_slam_surface_transitions() -> None:
+    points: list[tuple[float, float, float]] = []
+    for x, z in (
+        (0.00, 0.00),
+        (0.25, 0.00),
+        (0.50, 0.30),
+        (0.75, 0.60),
+        (1.00, 0.90),
+        (1.25, 1.20),
+    ):
+        for y in (-0.10, 0.0, 0.10):
+            points.append((x, y, z))
+
+    graph = build_slam_terrain_graph_from_points(
+        points,
+        grid_resolution=0.25,
+        max_slope_grade=1.25,
+        max_step_height=0.36,
+        max_surface_transition_height=0.12,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+    )
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(1.25, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+    )
+
+    assert path
+    assert path[-1].z >= 1.15
+    assert any(
+        'ramp' in node.surface_label or 'step' in node.surface_label
+        for node in path
+    )
 
 
 def test_sdf_surface_cloud_includes_ramp_and_mezzanine_deck() -> None:

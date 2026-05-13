@@ -13,6 +13,11 @@ research entry for advanced planning comparison.
   collision geometry, samples floor/ramp/deck traversable surfaces, runs a
   PCT-style height-aware graph search, publishes `/pct_path`, and sends
   terrain-guided `NavigateThroughPoses` waypoints to Nav2.
+- `terrain_pct_planner` can also run with `terrain_map_source:=slam_cloud`.
+  In that mode it subscribes to FAST-LIO2 `/Laser_map`, samples the XYZ
+  `PointCloud2` into a height-aware terrain graph, publishes
+  `/terrain_traversability_cloud`, and publishes `/pct_path` for connected
+  traversable regions.
 - `pointcloud_emulator` now samples full 3D collision surfaces rather than only
   obstacle side walls. The ramp top, floor, and mezzanine deck therefore enter
   `/livox/lidar_points`, FAST-LIO2 input, `/cloud_registered`, and
@@ -58,6 +63,20 @@ Current repository state:
 - Marks PCT-style candidates as `research_surrogate_not_trained_runtime`.
 - Does not claim CUDA tomography, learned traversability, or full kinodynamic
   legged planning as completed runtime.
+
+FAST-LIO2 map-planning boundary:
+
+- FAST-LIO2 mapping is active in the visual launch and publishes
+  `/cloud_registered`, `/Laser_map`, and `/Odometry`.
+- The SLAM-cloud terrain graph is a verified bridge from `/Laser_map` into the
+  local PCT-style planner. It is not yet equivalent to upstream PCT-planner's
+  full point-cloud traversability pipeline.
+- Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
+  works. The cross-level path from the spawn area to high floors is not yet
+  accepted because high-elevation points can remain disconnected or classified
+  as non-traversable step structure in the raw SLAM-derived graph.
+- Therefore the complete FAST-LIO2 SLAM -> cross-level planning -> motion
+  closed loop remains a next upgrade task, not a completed claim.
 
 ## 强化学习边界
 

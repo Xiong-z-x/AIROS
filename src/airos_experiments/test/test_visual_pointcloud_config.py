@@ -40,6 +40,12 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('fast_lio_max_live_points', default_value='12000')" in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
+    assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
+    assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.25')" in launch_text
+    assert "DeclareLaunchArgument('slam_min_cell_points', default_value='4')" in launch_text
+    assert "DeclareLaunchArgument('slam_vertical_layer_gap', default_value='0.18')" in launch_text
+    assert "DeclareLaunchArgument('slam_rebuild_period_sec', default_value='3.0')" in launch_text
     assert "DeclareLaunchArgument('use_route', default_value='false')" in launch_text
     assert "DeclareLaunchArgument('nav_stack_mode', default_value='safety_only')" in launch_text
     assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
@@ -51,6 +57,13 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'point_spacing': LaunchConfiguration('pointcloud_spacing')" in launch_text
     assert "'max_live_points': LaunchConfiguration('max_live_points')" in launch_text
     assert "'goal_topic': '/terrain_goal_pose'" in launch_text
+    assert "'terrain_map_source': LaunchConfiguration('terrain_map_source')" in launch_text
+    assert "'slam_map_topic': '/Laser_map'" in launch_text
+    assert "'slam_map_max_points': LaunchConfiguration('slam_map_max_points')" in launch_text
+    assert "'slam_grid_resolution': LaunchConfiguration('slam_grid_resolution')" in launch_text
+    assert "'slam_min_cell_points': LaunchConfiguration('slam_min_cell_points')" in launch_text
+    assert "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')" in launch_text
+    assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
     assert "'nav_stack_mode': LaunchConfiguration('nav_stack_mode')" in launch_text
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text

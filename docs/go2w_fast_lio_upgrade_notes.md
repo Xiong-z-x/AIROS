@@ -419,3 +419,39 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
 - Therefore the stable WSL path remains `sensor_source:=emulated` for the
   dense FAST-LIO terrain demo, while native LiDAR is selectable for raw-sensor
   experiments under `wsl_stable`.
+
+## 2026-05-14 FAST-LIO2 SLAM-Cloud Planning Status
+
+Implemented:
+
+- `terrain_pct_planner` now supports `terrain_map_source:=slam_cloud`.
+- In SLAM-cloud mode it subscribes to FAST-LIO2 `/Laser_map`, samples XYZ
+  `PointCloud2` data into a height-aware terrain graph, publishes
+  `/terrain_traversability_cloud`, and uses that graph for `/pct_path`.
+- SLAM-cloud graph rebuilding is throttled by `slam_rebuild_period_sec`
+  instead of rebuilding every second. The default FAST-LIO visual launch now
+  samples up to 80k map points per rebuild, which keeps the planner responsive
+  enough for RViz goal testing in WSL.
+- SDF terrain planning and SLAM-cloud planning use different transition rules:
+  SDF surfaces retain the explicit ramp-entry metadata, while SLAM-derived
+  surfaces use slope/step limits because the point cloud has no SDF box
+  metadata.
+
+Runtime smoke evidence:
+
+- Launch command:
+  `ros2 launch airos_experiments visual_fast_lio_navigation.launch.py gui:=false rviz:=false sensor_source:=emulated terrain_map_source:=slam_cloud terrain_send_nav2_goals:=false dynamic_obstacles:=false physical_dynamic_obstacles:=false log_level:=warn`
+- FAST-LIO2 published `/Laser_map`.
+- `terrain_pct_planner` rebuilt the FAST-LIO terrain graph with 5716 nodes and
+  about 35660 edges.
+- `/terrain_traversability_cloud` published with width 5716.
+- Publishing `/terrain_goal_pose` at `(2.0, 2.0)` produced `/pct_path` with
+  46 poses.
+
+Remaining limitation:
+
+- This is not yet a fully accepted cross-level FAST-LIO2 navigation chain.
+  A probe from the spawn area to high-floor goals still reports no path, even
+  though `/Laser_map` contains high-elevation points up to about `z=2.30`.
+  The remaining issue is traversability extraction and connectivity in the
+  SLAM-derived terrain graph, not the absence of FAST-LIO2 map output.
