@@ -43,6 +43,8 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
+    assert "DeclareLaunchArgument('collision_scan_topic', default_value='/slam_scan')" in launch_text
+    assert "DeclareLaunchArgument('terrain_goal_min_z', default_value='1.60')" in launch_text
     assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
     assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.30')" in launch_text
     assert "DeclareLaunchArgument('slam_min_cell_points', default_value='2')" in launch_text
@@ -66,12 +68,18 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'slam_min_cell_points': LaunchConfiguration('slam_min_cell_points')" in launch_text
     assert "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')" in launch_text
     assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
+    assert "executable='slam_scan_projector'" in launch_text
+    assert "'cloud_topic': '/Laser_map_world'" in launch_text
+    assert "'scan_topic': '/slam_scan'" in launch_text
+    assert "'min_z': 0.45" in launch_text
+    assert "'collision_scan_topic': LaunchConfiguration('collision_scan_topic')" in launch_text
     assert "'goal_z_policy': 'highest'" in launch_text
+    assert "'goal_min_z': LaunchConfiguration('terrain_goal_min_z')" in launch_text
     assert "'goal_snap_max_distance': 1.0" in launch_text
     assert "'frontier_replan_enabled': True" in launch_text
     assert "'frontier_min_path_distance': 0.25" in launch_text
     assert "'frontier_max_path_distance': 10.0" in launch_text
-    assert "'frontier_obstacle_scan_topic': '/scan'" in launch_text
+    assert "'frontier_obstacle_scan_topic': '/slam_scan'" in launch_text
     assert "'frontier_obstacle_clearance': 0.45" in launch_text
     assert "'frontier_obstacle_range_max': 3.0" in launch_text
     assert "'nav_execution_mode': LaunchConfiguration('terrain_execution_mode')" in launch_text
@@ -184,6 +192,9 @@ def test_external_map_manager_can_be_disabled_for_fast_lio_launch() -> None:
     assert 'external_map_manager = LaunchConfiguration' in nav_launch_text
     assert "DeclareLaunchArgument('external_map_manager', default_value='true')" in nav_launch_text
     assert '_external_map_manager_enabled(localization, external_map_manager)' in nav_launch_text
+    assert "collision_scan_topic = LaunchConfiguration('collision_scan_topic')" in nav_launch_text
+    assert "DeclareLaunchArgument('collision_scan_topic', default_value='/scan')" in nav_launch_text
+    assert "{'scan.topic': collision_scan_topic}" in nav_launch_text
 
 
 def test_visual_launches_use_safe_rviz_wrapper() -> None:

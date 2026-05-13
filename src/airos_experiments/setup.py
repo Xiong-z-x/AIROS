@@ -59,6 +59,7 @@ setup(
             'run_nav_trials = airos_experiments.nav_trial_runner:main',
             'save_slam_map = airos_experiments.slam_map_saver:main',
             'scan_emulator = airos_experiments.scan_emulator:main',
+            'slam_scan_projector = airos_experiments.slam_scan_projector:main',
             'summarize_trials = airos_experiments.metrics_summarizer:main',
             'terrain_pct_planner = airos_experiments.terrain_pct_planner:main',
         ],

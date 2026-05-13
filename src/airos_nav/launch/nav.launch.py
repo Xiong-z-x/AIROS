@@ -90,6 +90,7 @@ def _launch_setup(context, *args, **kwargs):
             f"got {nav_stack_mode_value!r}"
         )
     log_level = LaunchConfiguration('log_level')
+    collision_scan_topic = LaunchConfiguration('collision_scan_topic')
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -349,7 +350,10 @@ def _launch_setup(context, *args, **kwargs):
             executable='collision_monitor',
             name='collision_monitor',
             output='screen',
-            parameters=[configured_params],
+            parameters=[
+                configured_params,
+                {'scan.topic': collision_scan_topic},
+            ],
         ),
         Node(
             condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
@@ -460,6 +464,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_route', default_value='false'),
         DeclareLaunchArgument('nav_stack_mode', default_value='full'),
         DeclareLaunchArgument('external_map_manager', default_value='true'),
+        DeclareLaunchArgument('collision_scan_topic', default_value='/scan'),
         DeclareLaunchArgument('log_level', default_value='info'),
         OpaqueFunction(function=_launch_setup),
     ])

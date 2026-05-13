@@ -224,6 +224,7 @@ def plan_terrain_path(
     start_z: float = 0.0,
     goal_z_policy: str = 'highest',
     max_goal_xy_distance: float = math.inf,
+    goal_min_z: Optional[float] = None,
 ) -> list[TerrainNode]:
     for policy in _goal_search_policies(goal_z_policy):
         path = _plan_terrain_path_once(
@@ -233,6 +234,7 @@ def plan_terrain_path(
             start_z,
             policy,
             max_goal_xy_distance,
+            goal_min_z,
         )
         if path:
             return path
@@ -463,6 +465,7 @@ def _plan_terrain_path_once(
     start_z: float,
     goal_z_policy: str,
     max_goal_xy_distance: float,
+    goal_min_z: Optional[float],
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
@@ -480,6 +483,8 @@ def _plan_terrain_path_once(
     if start_index is None or goal_index is None:
         return []
     goal_node = graph.nodes[goal_index]
+    if goal_min_z is not None and goal_node.z < goal_min_z:
+        return []
     if (
         math.isfinite(max_goal_xy_distance)
         and math.hypot(goal_node.x - goal_xy[0], goal_node.y - goal_xy[1])
@@ -600,6 +605,15 @@ def _goal_target_z(
     return graph.nodes[goal_index].z
 
 
+def should_keep_pending_slam_goal(
+    graph: TerrainGraph,
+    *,
+    terrain_map_source: str,
+    frontier_replan_enabled: bool,
+) -> bool:
+    return terrain_map_source == 'slam_cloud' and frontier_replan_enabled
+
+
 def _weak_components(
     adjacency: list[list[tuple[int, float]]],
 ) -> tuple[list[int], list[int]]:
@@ -659,6 +673,7 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('max_step_height', 0.34)
         self.declare_parameter('max_surface_transition_height', 0.12)
         self.declare_parameter('goal_z_policy', 'highest')
+        self.declare_parameter('goal_min_z', -1.0)
         self.declare_parameter('send_nav2_goals', True)
         self.declare_parameter('nav_execution_mode', 'direct')
         self.declare_parameter('waypoint_spacing', 0.90)
@@ -702,6 +717,10 @@ class TerrainPctPlanner(Node):
                 f"got {self._terrain_map_source!r}"
             )
         self._goal_z_policy = str(self.get_parameter('goal_z_policy').value)
+        goal_min_z = float(self.get_parameter('goal_min_z').value)
+        self._goal_min_z: Optional[float] = (
+            goal_min_z if goal_min_z >= 0.0 else None
+        )
         self._send_nav2_goals = bool(
             self.get_parameter('send_nav2_goals').value
         )
@@ -1050,6 +1069,11 @@ class TerrainPctPlanner(Node):
             terrain_start_z,
             self._goal_z_policy,
         )
+        if self._goal_min_z is not None:
+            self._frontier_target_z = max(
+                self._frontier_target_z or self._goal_min_z,
+                self._goal_min_z,
+            )
         if self._is_duplicate_goal((goal_x, goal_y)):
             return
         path = plan_terrain_path(
@@ -1059,6 +1083,7 @@ class TerrainPctPlanner(Node):
             start_z=terrain_start_z,
             goal_z_policy=self._goal_z_policy,
             max_goal_xy_distance=self._goal_snap_max_distance,
+            goal_min_z=self._goal_min_z,
         )
         if not path:
             self.get_logger().warning(
@@ -1075,6 +1100,12 @@ class TerrainPctPlanner(Node):
             )
             if diagnostics:
                 self.get_logger().warning(diagnostics)
+            if should_keep_pending_slam_goal(
+                self._graph,
+                terrain_map_source=self._terrain_map_source,
+                frontier_replan_enabled=self._frontier_replan_enabled,
+            ):
+                self._pending_final_goal_xy = (goal_x, goal_y)
             self._plan_frontier_toward_goal(
                 start_xy=(start_x, start_y),
                 start_z=terrain_start_z,
@@ -1103,6 +1134,7 @@ class TerrainPctPlanner(Node):
             start_z=terrain_start_z,
             goal_z_policy=self._goal_z_policy,
             max_goal_xy_distance=self._goal_snap_max_distance,
+            goal_min_z=self._goal_min_z,
         )
         if not path:
             self._plan_frontier_toward_goal(

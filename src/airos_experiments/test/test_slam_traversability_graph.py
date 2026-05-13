@@ -17,6 +17,7 @@ from airos_experiments.terrain_pct_planner import (
     TerrainGraph,
     TerrainNode,
     build_slam_terrain_graph_from_pointcloud,
+    should_keep_pending_slam_goal,
     plan_slam_frontier_path,
     plan_terrain_path,
 )
@@ -250,6 +251,84 @@ def test_terrain_planner_rejects_goal_outside_slam_map_coverage() -> None:
     )
 
     assert path == []
+
+
+def test_terrain_planner_rejects_low_goal_when_high_goal_required() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+        goal_min_z=1.2,
+    )
+
+    assert path == []
+
+
+def test_terrain_planner_accepts_high_goal_when_required_layer_is_reachable() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.4, 'slam_ramp', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.8, 'slam_ramp', 1.0),
+        TerrainNode(3, 3.0, 0.0, 1.2, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0), (3, 1.0)],
+            [(2, 1.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(3.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+        goal_min_z=1.0,
+    )
+
+    assert [node.index for node in path] == [0, 1, 2, 3]
+
+
+def test_empty_slam_graph_failure_keeps_goal_pending_for_rebuild() -> None:
+    graph = TerrainGraph(nodes=[], adjacency=[], terrain_cloud=[])
+
+    assert should_keep_pending_slam_goal(
+        graph,
+        terrain_map_source='slam_cloud',
+        frontier_replan_enabled=True,
+    )
+
+
+def test_sdf_terrain_failure_does_not_keep_goal_pending() -> None:
+    graph = TerrainGraph(nodes=[], adjacency=[], terrain_cloud=[])
+
+    assert not should_keep_pending_slam_goal(
+        graph,
+        terrain_map_source='sdf',
+        frontier_replan_enabled=True,
+    )
 
 
 def test_slam_frontier_path_stays_in_reachable_component_toward_goal() -> None:
