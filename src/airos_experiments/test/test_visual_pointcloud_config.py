@@ -28,8 +28,10 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
 
     assert "'pointcloud_registered': 'false'" in launch_text
     assert "'pointcloud_map': 'false'" in launch_text
-    assert "'localization': 'static'" in launch_text
-    assert 'fast_lio_localization_bridge' not in launch_text
+    assert "'localization': 'external'" in launch_text
+    assert "executable='fast_lio_localization_bridge'" in launch_text
+    assert "'fast_lio_odom_topic': '/Odometry'" in launch_text
+    assert "'wheel_odom_topic': '/odom'" in launch_text
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
@@ -42,7 +44,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
     assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
-    assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.25')" in launch_text
+    assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.30')" in launch_text
     assert "DeclareLaunchArgument('slam_min_cell_points', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('slam_vertical_layer_gap', default_value='0.18')" in launch_text
     assert "DeclareLaunchArgument('slam_rebuild_period_sec', default_value='3.0')" in launch_text
@@ -58,17 +60,17 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'max_live_points': LaunchConfiguration('max_live_points')" in launch_text
     assert "'goal_topic': '/terrain_goal_pose'" in launch_text
     assert "'terrain_map_source': LaunchConfiguration('terrain_map_source')" in launch_text
-    assert "'slam_map_topic': '/Laser_map'" in launch_text
+    assert "'slam_map_topic': '/Laser_map_world'" in launch_text
     assert "'slam_map_max_points': LaunchConfiguration('slam_map_max_points')" in launch_text
     assert "'slam_grid_resolution': LaunchConfiguration('slam_grid_resolution')" in launch_text
     assert "'slam_min_cell_points': LaunchConfiguration('slam_min_cell_points')" in launch_text
     assert "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')" in launch_text
     assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
-    assert "'goal_z_policy': 'adaptive'" in launch_text
+    assert "'goal_z_policy': 'highest'" in launch_text
     assert "'goal_snap_max_distance': 1.0" in launch_text
     assert "'frontier_replan_enabled': True" in launch_text
-    assert "'frontier_min_path_distance': 1.0" in launch_text
-    assert "'frontier_max_path_distance': 2.0" in launch_text
+    assert "'frontier_min_path_distance': 0.25" in launch_text
+    assert "'frontier_max_path_distance': 10.0" in launch_text
     assert "'frontier_obstacle_scan_topic': '/scan'" in launch_text
     assert "'frontier_obstacle_clearance': 0.45" in launch_text
     assert "'frontier_obstacle_range_max': 3.0" in launch_text
@@ -77,7 +79,11 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text
     assert "'grid_resolution': 0.25" in launch_text
     assert "'terrain_cloud_resolution': 0.10" in launch_text
+    assert "'odom_topic': '/Odometry'" not in launch_text
+    assert "'odom_topic': '/odom'" in launch_text
+    assert "'use_initial_pose_anchor': False" in launch_text
     assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
+    assert "'direct_goal_tolerance': 0.12" in launch_text
     assert "'direct_max_linear_speed': 0.16" in launch_text
     assert "'direct_max_angular_speed': 0.28" in launch_text
     assert "'large_multilevel_complex_static.sdf'" in launch_text

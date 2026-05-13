@@ -248,14 +248,14 @@ def plan_slam_frontier_path(
     max_path_distance: float = math.inf,
     blocked_points: Optional[list[tuple[float, float]]] = None,
     obstacle_clearance: float = 0.0,
+    target_z: Optional[float] = None,
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
-    start_index = _nearest_node(
-        graph.nodes,
+    start_index = _nearest_reachable_start_node(
+        graph,
         start_xy,
-        z_reference=start_z,
-        policy='nearest_z',
+        start_z,
     )
     if start_index is None:
         return []
@@ -313,6 +313,11 @@ def plan_slam_frontier_path(
     best_index = min(
         candidates,
         key=lambda index: (
+            _frontier_vertical_score(
+                graph.nodes[index],
+                start_z=start_z,
+                target_z=target_z,
+            ),
             math.hypot(graph.nodes[index].x - goal_xy[0], graph.nodes[index].y - goal_xy[1]),
             -_goal_progress(
                 start_xy,
@@ -322,12 +327,17 @@ def plan_slam_frontier_path(
             ),
         ),
     )
-    if _goal_progress(
+    best_progress = _goal_progress(
         start_xy,
         goal_xy,
         (graph.nodes[best_index].x, graph.nodes[best_index].y),
         goal_distance_from_start,
-    ) <= 0.0:
+    )
+    if best_progress <= 0.0 and not _frontier_makes_vertical_progress(
+        graph.nodes[best_index],
+        start_z=start_z,
+        target_z=target_z,
+    ):
         return []
 
     path: list[TerrainNode] = []
@@ -337,6 +347,30 @@ def plan_slam_frontier_path(
         cursor = parents[cursor]
     path.reverse()
     return path
+
+
+def _frontier_makes_vertical_progress(
+    node: TerrainNode,
+    *,
+    start_z: float,
+    target_z: Optional[float],
+) -> bool:
+    if target_z is None or target_z <= start_z + 0.45:
+        return False
+    return node.z >= start_z + 0.20
+
+
+def _frontier_vertical_score(
+    node: TerrainNode,
+    *,
+    start_z: float,
+    target_z: Optional[float],
+) -> float:
+    if target_z is None or target_z <= start_z + 0.45:
+        return 0.0
+    if node.z >= min(target_z, start_z + 0.45):
+        return 0.0
+    return max(0.0, target_z - node.z)
 
 
 def _nodes_near_blocked_points(
@@ -373,6 +407,47 @@ def _goal_progress(
     ) * uy
 
 
+def _nearest_reachable_start_node(
+    graph: TerrainGraph,
+    xy: tuple[float, float],
+    z_reference: float,
+) -> Optional[int]:
+    if not graph.nodes:
+        return None
+    component_ids, component_sizes = _weak_components(graph.adjacency)
+    nearby = sorted(
+        graph.nodes,
+        key=lambda node: math.hypot(node.x - xy[0], node.y - xy[1]),
+    )[:120]
+    candidates = [
+        node
+        for node in nearby
+        if graph.adjacency[node.index]
+    ]
+    if not candidates:
+        candidates = nearby
+    max_candidate_component = max(
+        component_sizes[component_ids[node.index]]
+        for node in candidates
+    )
+    if max_candidate_component >= 2:
+        stable_candidates = [
+            node
+            for node in candidates
+            if component_sizes[component_ids[node.index]]
+            >= max(2, int(max_candidate_component * 0.50))
+        ]
+        if stable_candidates:
+            candidates = stable_candidates
+    return min(
+        candidates,
+        key=lambda node: (
+            math.hypot(node.x - xy[0], node.y - xy[1])
+            + abs(node.z - z_reference) * 0.6
+        ),
+    ).index
+
+
 def _goal_search_policies(goal_z_policy: str) -> list[str]:
     if goal_z_policy == 'adaptive':
         return ['highest', 'nearest_z', 'lowest']
@@ -391,11 +466,10 @@ def _plan_terrain_path_once(
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
-    start_index = _nearest_node(
-        graph.nodes,
+    start_index = _nearest_reachable_start_node(
+        graph,
         start_xy,
-        z_reference=start_z,
-        policy='nearest_z',
+        start_z,
     )
     goal_index = _nearest_node(
         graph.nodes,
@@ -506,6 +580,24 @@ def _terrain_graph_route_diagnostics(
         f'component_size={component_sizes[goal_component]}) '
         f'largest_components={sorted(component_sizes, reverse=True)[:5]}'
     )
+
+
+def _goal_target_z(
+    graph: TerrainGraph,
+    goal_xy: tuple[float, float],
+    start_z: float,
+    goal_z_policy: str,
+) -> Optional[float]:
+    policy = _goal_search_policies(goal_z_policy)[0]
+    goal_index = _nearest_node(
+        graph.nodes,
+        goal_xy,
+        z_reference=start_z,
+        policy=policy,
+    )
+    if goal_index is None:
+        return None
+    return graph.nodes[goal_index].z
 
 
 def _weak_components(
@@ -696,6 +788,7 @@ class TerrainPctPlanner(Node):
         self._frontier_obstacle_range_max = float(
             self.get_parameter('frontier_obstacle_range_max').value
         )
+        self._frontier_target_z: Optional[float] = None
         self._use_initial_pose_anchor = bool(
             self.get_parameter('use_initial_pose_anchor').value
         )
@@ -951,6 +1044,12 @@ class TerrainPctPlanner(Node):
         )
         goal_x = float(msg.pose.position.x)
         goal_y = float(msg.pose.position.y)
+        self._frontier_target_z = _goal_target_z(
+            self._graph,
+            (goal_x, goal_y),
+            terrain_start_z,
+            self._goal_z_policy,
+        )
         if self._is_duplicate_goal((goal_x, goal_y)):
             return
         path = plan_terrain_path(
@@ -1069,6 +1168,7 @@ class TerrainPctPlanner(Node):
             max_path_distance=self._frontier_max_path_distance,
             blocked_points=self._frontier_blocked_points_from_scan(),
             obstacle_clearance=self._frontier_obstacle_clearance,
+            target_z=self._frontier_target_z,
         )
         if not path:
             return

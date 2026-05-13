@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from typing import Optional
 
 import rclpy
@@ -16,12 +15,12 @@ from rclpy.qos import (
 )
 from tf2_ros import TransformBroadcaster
 
-
-@dataclass(frozen=True)
-class Pose2D:
-    x: float
-    y: float
-    yaw: float
+from airos_experiments.fast_lio_frame_alignment import (
+    FrameAlignment,
+    Pose2D,
+    normalize_angle,
+    transform_pose,
+)
 
 
 def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
@@ -33,10 +32,6 @@ def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
 def _quaternion_from_yaw(yaw: float) -> tuple[float, float, float, float]:
     half = yaw * 0.5
     return 0.0, 0.0, math.sin(half), math.cos(half)
-
-
-def _normalize_angle(angle: float) -> float:
-    return math.atan2(math.sin(angle), math.cos(angle))
 
 
 def _pose2d_from_odom(msg: Odometry) -> Pose2D:
@@ -56,8 +51,11 @@ def _pose2d_from_odom(msg: Odometry) -> Pose2D:
 def _compose_map_to_odom(
     map_to_base: Pose2D,
     odom_to_base: Pose2D,
+    alignment: FrameAlignment | None = None,
 ) -> Pose2D:
-    yaw = _normalize_angle(map_to_base.yaw - odom_to_base.yaw)
+    if alignment is not None:
+        map_to_base = transform_pose(map_to_base, alignment)
+    yaw = normalize_angle(map_to_base.yaw - odom_to_base.yaw)
     cos_yaw = math.cos(yaw)
     sin_yaw = math.sin(yaw)
     odom_x_in_map = (
@@ -84,6 +82,10 @@ class FastLioLocalizationBridge(Node):
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('publish_rate_hz', 20.0)
         self.declare_parameter('max_source_age_sec', 0.8)
+        self.declare_parameter('spawn_x', 0.0)
+        self.declare_parameter('spawn_y', 0.0)
+        self.declare_parameter('spawn_z', 0.0)
+        self.declare_parameter('spawn_yaw', 0.0)
 
         self._map_frame = str(self.get_parameter('map_frame').value)
         self._odom_frame = str(self.get_parameter('odom_frame').value)
@@ -91,6 +93,12 @@ class FastLioLocalizationBridge(Node):
         self._max_source_age_ns = int(
             float(self.get_parameter('max_source_age_sec').value)
             * 1_000_000_000
+        )
+        self._alignment = FrameAlignment(
+            spawn_x=float(self.get_parameter('spawn_x').value),
+            spawn_y=float(self.get_parameter('spawn_y').value),
+            spawn_z=float(self.get_parameter('spawn_z').value),
+            spawn_yaw=float(self.get_parameter('spawn_yaw').value),
         )
 
         qos = QoSProfile(
@@ -161,7 +169,11 @@ class FastLioLocalizationBridge(Node):
 
         map_to_base = _pose2d_from_odom(self._fast_lio_odom)
         odom_to_base = _pose2d_from_odom(self._wheel_odom)
-        map_to_odom = _compose_map_to_odom(map_to_base, odom_to_base)
+        map_to_odom = _compose_map_to_odom(
+            map_to_base,
+            odom_to_base,
+            self._alignment,
+        )
         qx, qy, qz, qw = _quaternion_from_yaw(map_to_odom.yaw)
 
         transform = TransformStamped()

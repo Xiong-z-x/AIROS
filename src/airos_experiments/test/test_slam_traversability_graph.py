@@ -314,6 +314,121 @@ def test_slam_frontier_path_requires_progress_from_start() -> None:
     assert path == []
 
 
+def test_slam_frontier_path_ignores_isolated_start_outlier() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.25, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 0.75, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 1.25, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [],
+            [(2, 0.5)],
+            [(1, 0.5), (3, 0.5)],
+            [(2, 0.5)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(5.0, 0.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=1.0,
+    )
+
+    assert [node.index for node in path] == [1, 2, 3]
+
+
+def test_terrain_path_uses_stable_start_component_over_near_artifact() -> None:
+    artifact_nodes = [
+        TerrainNode(0, 0.0, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(1, 0.2, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(2, 0.4, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(3, -0.2, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(4, -0.4, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(5, -0.6, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(6, -0.8, 0.0, -0.05, 'slam_floor', 1.0),
+    ]
+    stable_nodes = [
+        TerrainNode(index, 1.2 + (index - 7) * 0.25, 0.0, -0.30, 'slam_floor', 1.0)
+        for index in range(7, 32)
+    ]
+    nodes = artifact_nodes + stable_nodes
+    adjacency: list[list[tuple[int, float]]] = [[] for _ in nodes]
+    adjacency[0].append((1, 0.2))
+    adjacency[1].extend([(0, 0.2), (2, 0.2)])
+    adjacency[2].append((1, 0.2))
+    adjacency[0].append((3, 0.2))
+    adjacency[3].extend([(0, 0.2), (4, 0.2)])
+    adjacency[4].extend([(3, 0.2), (5, 0.2)])
+    adjacency[5].extend([(4, 0.2), (6, 0.2)])
+    adjacency[6].append((5, 0.2))
+    for index in range(7, 31):
+        adjacency[index].append((index + 1, 0.25))
+        adjacency[index + 1].append((index, 0.25))
+    graph = TerrainGraph(nodes=nodes, adjacency=adjacency, terrain_cloud=[])
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(7.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='nearest_z',
+        max_goal_xy_distance=1.0,
+    )
+
+    assert path
+    assert path[0].index == 7
+    assert path[-1].index == 30
+
+
+def test_slam_frontier_path_uses_stable_start_component_over_near_artifact() -> None:
+    artifact_nodes = [
+        TerrainNode(0, 0.0, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(1, 0.2, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(2, 0.4, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(3, -0.2, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(4, -0.4, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(5, -0.6, 0.0, -0.05, 'slam_floor', 1.0),
+        TerrainNode(6, -0.8, 0.0, -0.05, 'slam_floor', 1.0),
+    ]
+    stable_nodes = [
+        TerrainNode(index, 1.2 + (index - 7) * 0.25, 0.0, -0.30, 'slam_floor', 1.0)
+        for index in range(7, 32)
+    ]
+    nodes = artifact_nodes + stable_nodes
+    adjacency: list[list[tuple[int, float]]] = [[] for _ in nodes]
+    adjacency[0].append((1, 0.2))
+    adjacency[1].extend([(0, 0.2), (2, 0.2)])
+    adjacency[2].append((1, 0.2))
+    adjacency[0].append((3, 0.2))
+    adjacency[3].extend([(0, 0.2), (4, 0.2)])
+    adjacency[4].extend([(3, 0.2), (5, 0.2)])
+    adjacency[5].extend([(4, 0.2), (6, 0.2)])
+    adjacency[6].append((5, 0.2))
+    for index in range(7, 31):
+        adjacency[index].append((index + 1, 0.25))
+        adjacency[index + 1].append((index, 0.25))
+    graph = TerrainGraph(nodes=nodes, adjacency=adjacency, terrain_cloud=[])
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(7.0, 0.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=1.0,
+    )
+
+    assert path
+    assert path[0].index == 7
+
+
 def test_slam_frontier_path_limits_exploration_to_short_rolling_step() -> None:
     nodes = [
         TerrainNode(index, float(index), 0.0, 0.0, 'slam_floor', 1.0)
@@ -335,6 +450,71 @@ def test_slam_frontier_path_limits_exploration_to_short_rolling_step() -> None:
     )
 
     assert [node.index for node in path] == [0, 1, 2]
+
+
+def test_slam_frontier_path_prefers_forward_progress_over_goal_distance() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 1.0, 0.1, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 2.0, 0.2, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0), (2, 1.0)],
+            [(0, 1.0)],
+            [(0, 1.0), (3, 1.0)],
+            [(2, 1.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(10.0, 2.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=2.0,
+    )
+
+    assert [node.index for node in path] == [0, 2, 3]
+
+
+def test_slam_frontier_path_prefers_vertical_progress_for_high_goal() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 0.0, -1.0, 0.35, 'slam_ramp', 1.0),
+        TerrainNode(4, 0.0, -2.0, 0.70, 'slam_ramp', 1.0),
+        TerrainNode(5, 2.0, 0.0, 2.0, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.0), (3, 1.1)],
+            [(0, 1.0), (2, 1.0)],
+            [(1, 1.0)],
+            [(0, 1.1), (4, 1.1)],
+            [(3, 1.1)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.0, 0.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=3.0,
+        target_z=2.0,
+    )
+
+    assert [node.index for node in path] == [0, 3, 4]
 
 
 def test_slam_frontier_path_uses_live_obstacle_points_to_avoid_wall_gap() -> None:
