@@ -87,6 +87,9 @@ FAST-LIO2 map-planning boundary:
   It preserves the original final goal and retries it after later `/Laser_map`
   graph rebuilds. This is the current bridge toward unknown-environment
   map-progress planning.
+- SLAM-cloud graph construction filters low traversable clusters when the same
+  grid cell contains a multi-layer vertical point stack above them. This reduces
+  false traversability through obstacle bases in raw FAST-LIO maps.
 - Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
   works. For an initially unreachable cross-level target, the planner now
   publishes an exploration-frontier path toward the target and can drive the

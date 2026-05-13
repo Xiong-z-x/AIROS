@@ -84,8 +84,16 @@ def build_slam_graph_from_points(
         if len(cell_points) < max(1, min_cell_points):
             continue
         cell_points.sort(key=lambda point: point[2])
-        for cluster in _height_clusters(cell_points, vertical_layer_gap):
+        clusters = _height_clusters(cell_points, vertical_layer_gap)
+        blocked_low_clusters = _blocked_low_cluster_indexes(
+            clusters,
+            max_step_height=max_step_height,
+            min_cell_points=min_cell_points,
+        )
+        for cluster_index, cluster in enumerate(clusters):
             if len(cluster) < max(1, min_cell_points):
+                continue
+            if cluster_index in blocked_low_clusters:
                 continue
             node = _node_from_cluster(
                 cluster,
@@ -231,6 +239,41 @@ def _height_clusters(
         current = [point]
     clusters.append(current)
     return clusters
+
+
+def _blocked_low_cluster_indexes(
+    clusters: list[list[tuple[float, float, float]]],
+    *,
+    max_step_height: float,
+    min_cell_points: int,
+) -> set[int]:
+    blocked: set[int] = set()
+    if len(clusters) < 2:
+        return blocked
+    min_points = max(1, min_cell_points)
+    for lower_index, lower in enumerate(clusters[:-1]):
+        if len(lower) < min_points:
+            continue
+        lower_z = sum(point[2] for point in lower) / len(lower)
+        stacked_points = 0
+        stacked_layers = 0
+        top_z = lower_z
+        for upper in clusters[lower_index + 1:]:
+            if len(upper) < min_points:
+                continue
+            upper_z = sum(point[2] for point in upper) / len(upper)
+            if upper_z <= lower_z + max(0.18, max_step_height * 0.55):
+                continue
+            stacked_layers += 1
+            stacked_points += len(upper)
+            top_z = max(top_z, upper_z)
+        if (
+            stacked_layers >= 2
+            and stacked_points >= max(3, min_points * 3)
+            and top_z - lower_z >= max(0.55, max_step_height * 1.5)
+        ):
+            blocked.add(lower_index)
+    return blocked
 
 
 def _node_from_cluster(

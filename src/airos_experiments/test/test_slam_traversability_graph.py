@@ -312,3 +312,31 @@ def test_slam_frontier_path_requires_progress_from_start() -> None:
     )
 
     assert path == []
+
+
+def test_slam_graph_routes_around_vertical_obstacle_cells() -> None:
+    points: list[tuple[float, float, float]] = []
+    for x in (0.0, 0.25, 0.50, 0.75, 1.00):
+        points.append((x, 0.0, 0.0))
+    for z in (0.20, 0.45, 0.70, 0.95, 1.20):
+        for dx in (-0.03, 0.0, 0.03):
+            for dy in (-0.03, 0.0, 0.03):
+                points.append((0.50 + dx, dy, z))
+
+    graph = build_slam_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.25,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+        max_slope_grade=0.75,
+        max_step_height=0.34,
+    )
+    path = plan_slam_graph_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(1.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='nearest_z',
+    )
+
+    assert path == []

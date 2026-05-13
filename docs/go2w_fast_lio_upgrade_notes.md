@@ -451,11 +451,14 @@ Implemented:
   `terrain_pct_planner` can publish a FAST-LIO exploration-frontier path inside
   the reachable component and keep the original final goal pending for later
   `/Laser_map` rebuilds.
+- SLAM-cloud graph construction now filters low surface clusters under
+  multi-layer vertical point stacks, so obstacle bases are not treated as
+  traversable ground in narrow point-cloud passages.
 - Regression coverage includes synthetic floor -> ramp -> platform routing,
   direct platform-edge drop rejection, sparse same-level routing from the spawn
   area, large-world spawn -> third-level routing on a complete sampled point
   cloud, adaptive goal-height fallback, out-of-coverage goal rejection, and
-  reachable-component frontier planning.
+  reachable-component frontier planning, plus vertical-obstacle cell rejection.
 
 Runtime smoke evidence:
 
