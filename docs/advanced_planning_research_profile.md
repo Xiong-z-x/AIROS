@@ -71,8 +71,8 @@ FAST-LIO2 map-planning boundary:
 
 - FAST-LIO2 mapping is active in the visual launch and publishes
   `/cloud_registered`, `/Laser_map`, and `/Odometry`.
-- The SLAM-cloud terrain graph is a verified bridge from `/Laser_map` into the
-  local PCT-style planner. It is not yet equivalent to upstream PCT-planner's
+- The SLAM-cloud terrain graph is a verified bridge from aligned `/Laser_map_world`
+  into the local PCT-style planner. It is not yet equivalent to upstream PCT-planner's
   full point-cloud traversability pipeline.
 - The graph builder is split out of `terrain_pct_planner`, so future FAST-LIO2
   map segmentation and cross-level connector logic can evolve without touching
@@ -87,10 +87,13 @@ FAST-LIO2 map-planning boundary:
   component. It preserves the original final goal and retries it after later
   `/Laser_map` graph rebuilds. If the final goal is still unreachable after a
   rebuild, it refreshes the frontier path from the current robot pose instead
-  of keeping a stale one. The default launch keeps frontier paths between
-  1.0 m and 2.0 m of graph distance, so exploration advances as short rolling
-  steps rather than a long command to a far frontier.
-- The frontier planner also fuses live `/scan` obstacle points as temporary
+  of keeping a stale one. For high-floor goals, it also biases the next
+  frontier toward high structures already mapped by FAST-LIO2, which helps the
+  robot search toward lateral ramps or upper decks instead of only the final XY
+  line. The default launch keeps frontier paths between 0.25 m and 10.0 m of
+  graph distance, while the active-frontier holder and stall release prevent
+  constant target churn.
+- The frontier planner also fuses live `/slam_scan` obstacle points as temporary
   blocked graph nodes. This is required because runtime evidence showed that
   FAST-LIO2 `/Laser_map` may retain traversable floor while dropping nearby
   vertical wall returns from the current frame; planning from `/Laser_map`

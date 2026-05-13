@@ -316,9 +316,15 @@ def plan_slam_frontier_path(
     if bounded_candidates:
         candidates = bounded_candidates
 
+    scoring_goal_xy = _frontier_high_attractor_xy(
+        graph.nodes,
+        start_z=start_z,
+        goal_xy=goal_xy,
+        target_z=target_z,
+    ) or goal_xy
     goal_distance_from_start = math.hypot(
-        goal_xy[0] - start_xy[0],
-        goal_xy[1] - start_xy[1],
+        scoring_goal_xy[0] - start_xy[0],
+        scoring_goal_xy[1] - start_xy[1],
     )
     best_index = min(
         candidates,
@@ -329,12 +335,12 @@ def plan_slam_frontier_path(
                 target_z=target_z,
             ),
             math.hypot(
-                graph.nodes[index].x - goal_xy[0],
-                graph.nodes[index].y - goal_xy[1],
+                graph.nodes[index].x - scoring_goal_xy[0],
+                graph.nodes[index].y - scoring_goal_xy[1],
             ),
             -_goal_progress(
                 start_xy,
-                goal_xy,
+                scoring_goal_xy,
                 (graph.nodes[index].x, graph.nodes[index].y),
                 goal_distance_from_start,
             ),
@@ -342,7 +348,7 @@ def plan_slam_frontier_path(
     )
     best_progress = _goal_progress(
         start_xy,
-        goal_xy,
+        scoring_goal_xy,
         (graph.nodes[best_index].x, graph.nodes[best_index].y),
         goal_distance_from_start,
     )
@@ -360,6 +366,29 @@ def plan_slam_frontier_path(
         cursor = parents[cursor]
     path.reverse()
     return path
+
+
+def _frontier_high_attractor_xy(
+    nodes: list[TerrainNode],
+    *,
+    start_z: float,
+    goal_xy: tuple[float, float],
+    target_z: Optional[float],
+) -> Optional[tuple[float, float]]:
+    if target_z is None or target_z <= start_z + 0.45:
+        return None
+    high_threshold = min(target_z, start_z + 0.45)
+    high_nodes = [node for node in nodes if node.z >= high_threshold]
+    if not high_nodes:
+        return None
+    attractor = min(
+        high_nodes,
+        key=lambda node: (
+            math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
+            abs(node.z - target_z),
+        ),
+    )
+    return (attractor.x, attractor.y)
 
 
 def _frontier_makes_vertical_progress(

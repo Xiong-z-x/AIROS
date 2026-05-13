@@ -769,6 +769,39 @@ def test_slam_frontier_path_avoids_recently_failed_frontier_region() -> None:
     assert [node.index for node in path] == [0, 3, 4]
 
 
+def test_slam_frontier_path_tracks_mapped_high_attractor_for_high_goal() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, -9.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, -2.0, -9.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -4.0, -8.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -4.0, -4.0, 1.7, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 2.2), (2, 2.2)],
+            [(0, 2.2)],
+            [(0, 2.2), (3, 2.2)],
+            [(2, 2.2)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=5.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 2, 3]
+
+
 def test_slam_graph_routes_around_vertical_obstacle_cells() -> None:
     points: list[tuple[float, float, float]] = []
     for x in (0.0, 0.25, 0.50, 0.75, 1.00):

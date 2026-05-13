@@ -425,7 +425,7 @@ ros2 launch airos_experiments visual_fast_lio_navigation.launch.py \
 Implemented:
 
 - `terrain_pct_planner` now supports `terrain_map_source:=slam_cloud`.
-- In SLAM-cloud mode it subscribes to FAST-LIO2 `/Laser_map`, samples XYZ
+- In SLAM-cloud mode it subscribes to aligned FAST-LIO2 `/Laser_map_world`, samples XYZ
   `PointCloud2` data into a height-aware terrain graph, publishes
   `/terrain_traversability_cloud`, and uses that graph for `/pct_path`.
 - SLAM-cloud graph rebuilding is throttled by `slam_rebuild_period_sec`
@@ -452,15 +452,20 @@ Implemented:
   the reachable component and keep the original final goal pending for later
   `/Laser_map` rebuilds. If a rebuild still cannot reach the final goal, the
   planner refreshes the frontier path from the current robot pose.
+- For high-floor goals, the frontier selector now looks for mapped high
+  structures already present in the FAST-LIO graph and uses the nearest high
+  structure to bias the next reachable frontier. This prevents the robot from
+  blindly moving along the final XY direction when the live map contains a
+  lateral ramp or upper-deck hint.
 - FAST-LIO exploration-frontier paths are bounded by
-  `frontier_min_path_distance:=1.0` and `frontier_max_path_distance:=2.0` in the
+  `frontier_min_path_distance:=0.25` and `frontier_max_path_distance:=10.0` in the
   default visual launch. This prevents the controller from chasing a far
   frontier in one command before the live SLAM map has expanded.
 - Frontier planning fuses live `/scan` obstacle points through
-  `frontier_obstacle_scan_topic:=/scan`,
+  `frontier_obstacle_scan_topic:=/slam_scan`,
   `frontier_obstacle_clearance:=0.45`, and
   `frontier_obstacle_range_max:=3.0`. This is intentionally local and
-  temporary: `/Laser_map` remains the SLAM map source, while `/scan` blocks
+  temporary: `/Laser_map_world` remains the SLAM map source, while `/slam_scan` blocks
   nearby frontier graph nodes that FAST-LIO2 did not preserve as vertical
   obstacles in the map output.
 - SLAM-cloud graph construction now filters low surface clusters under
@@ -470,7 +475,8 @@ Implemented:
   direct platform-edge drop rejection, sparse same-level routing from the spawn
   area, large-world spawn -> third-level routing on a complete sampled point
   cloud, adaptive goal-height fallback, out-of-coverage goal rejection, and
-  reachable-component frontier planning, plus vertical-obstacle cell rejection.
+  reachable-component frontier planning, high-structure-biased frontier
+  selection, plus vertical-obstacle cell rejection.
 
 Runtime smoke evidence:
 
