@@ -705,6 +705,20 @@ def test_active_frontier_path_releases_when_final_goal_changes() -> None:
     )
 
 
+def test_inactive_frontier_execution_does_not_hold_stale_path() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, 0.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    assert not should_hold_active_frontier_path(
+        active_path=path,
+        current_xy=(0.25, 0.0),
+        goal_tolerance=0.35,
+        execution_active=False,
+    )
+
+
 def test_stalled_frontier_releases_after_commanded_motion_without_odom_progress() -> None:
     assert should_release_stalled_frontier_path(
         active_path=[

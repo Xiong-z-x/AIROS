@@ -690,11 +690,14 @@ def should_hold_active_frontier_path(
     active_path: list[TerrainNode],
     current_xy: tuple[float, float],
     goal_tolerance: float,
+    execution_active: bool = True,
     active_final_goal_xy: Optional[tuple[float, float]] = None,
     final_goal_xy: Optional[tuple[float, float]] = None,
     final_goal_tolerance: float = 0.05,
 ) -> bool:
     if not active_path:
+        return False
+    if not execution_active:
         return False
     if active_final_goal_xy is not None and final_goal_xy is not None:
         final_goal_distance = math.hypot(
@@ -1334,6 +1337,7 @@ class TerrainPctPlanner(Node):
             active_path=self._active_frontier_path,
             current_xy=start_xy,
             goal_tolerance=self._direct_goal_tolerance,
+            execution_active=bool(self._direct_path),
             active_final_goal_xy=self._active_frontier_final_goal_xy,
             final_goal_xy=final_goal_xy,
             final_goal_tolerance=self._duplicate_goal_xy_tolerance,
