@@ -99,6 +99,40 @@ def test_slam_graph_routes_floor_to_platform_through_ramp() -> None:
     assert TraversabilityLabel.PLATFORM in labels
 
 
+def test_slam_graph_bridges_sparse_ramp_samples_with_safe_grade() -> None:
+    points: list[tuple[float, float, float]] = []
+    for x, z in (
+        (0.0, 0.0),
+        (0.6, 0.24),
+        (1.2, 0.48),
+        (1.8, 0.72),
+        (2.4, 0.96),
+    ):
+        for y in (-0.06, 0.06):
+            points.append((x, y, z))
+
+    graph = build_slam_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.30,
+        min_cell_points=2,
+        vertical_layer_gap=0.10,
+        max_slope_grade=0.58,
+        max_step_height=0.36,
+        max_surface_transition_height=0.12,
+    )
+    path = plan_slam_graph_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.4, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+    )
+
+    assert path
+    assert path[0].z <= 0.05
+    assert path[-1].z >= 0.90
+
+
 def test_slam_graph_rejects_direct_platform_edge_drop() -> None:
     points: list[tuple[float, float, float]] = []
     for x in (0.0, 0.25, 0.50):
@@ -796,6 +830,39 @@ def test_slam_frontier_path_tracks_mapped_high_attractor_for_high_goal() -> None
         start_z=0.0,
         min_path_distance=1.0,
         max_path_distance=5.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 2, 3]
+
+
+def test_slam_frontier_path_rejects_reverse_low_bump_for_high_goal() -> None:
+    nodes = [
+        TerrainNode(0, -4.8, -10.6, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, -6.0, -10.1, 0.50, 'slam_step', 1.0),
+        TerrainNode(2, -3.7, -8.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -2.8, -7.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, 5.2, 10.8, 2.0, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.4), (2, 2.2)],
+            [(0, 1.4)],
+            [(0, 2.2), (3, 2.0)],
+            [(2, 2.0)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(-4.8, -10.6),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=10.0,
         target_z=1.6,
     )
 

@@ -329,6 +329,16 @@ def plan_slam_frontier_path(
     best_index = min(
         candidates,
         key=lambda index: (
+            _frontier_reverse_penalty(
+                graph.nodes[index],
+                start_xy=start_xy,
+                goal_xy=goal_xy,
+                target_z=target_z,
+                goal_distance_from_start=math.hypot(
+                    goal_xy[0] - start_xy[0],
+                    goal_xy[1] - start_xy[1],
+                ),
+            ),
             _frontier_vertical_priority(
                 graph.nodes[index],
                 start_z=start_z,
@@ -389,6 +399,25 @@ def _frontier_high_attractor_xy(
         ),
     )
     return (attractor.x, attractor.y)
+
+
+def _frontier_reverse_penalty(
+    node: TerrainNode,
+    *,
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    target_z: Optional[float],
+    goal_distance_from_start: float,
+) -> int:
+    if target_z is None or goal_distance_from_start <= 1e-6:
+        return 0
+    progress = _goal_progress(
+        start_xy,
+        goal_xy,
+        (node.x, node.y),
+        goal_distance_from_start,
+    )
+    return 1 if progress < 0.0 else 0
 
 
 def _frontier_makes_vertical_progress(

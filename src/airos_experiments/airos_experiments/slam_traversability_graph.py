@@ -389,8 +389,9 @@ def _neighbor_nodes(
 ) -> list[SlamTerrainNode]:
     candidates: set[int] = set()
     key_x, key_y = _bin_key(node.x, node.y, grid_resolution)
-    for bx in range(key_x - 1, key_x + 2):
-        for by in range(key_y - 1, key_y + 2):
+    bin_radius = max(1, int(math.ceil(search_radius / max(grid_resolution, 1e-6))))
+    for bx in range(key_x - bin_radius, key_x + bin_radius + 1):
+        for by in range(key_y - bin_radius, key_y + bin_radius + 1):
             candidates.update(bins.get((bx, by), []))
     candidates.discard(node.index)
     return [
@@ -413,7 +414,11 @@ def _build_adjacency(
     for node in nodes:
         bins[_bin_key(node.x, node.y, grid_resolution)].append(node.index)
 
-    neighbor_radius = grid_resolution * 1.65
+    neighbor_radius = _slam_neighbor_radius(
+        grid_resolution=grid_resolution,
+        max_slope_grade=max_slope_grade,
+        max_step_height=max_step_height,
+    )
     for node in nodes:
         for other in _neighbor_nodes(
             node,
@@ -437,6 +442,16 @@ def _build_adjacency(
                 cost += grid_resolution
             adjacency[node.index].append((other.index, cost))
     return adjacency
+
+
+def _slam_neighbor_radius(
+    *,
+    grid_resolution: float,
+    max_slope_grade: float,
+    max_step_height: float,
+) -> float:
+    step_limited_radius = max_step_height / max(max_slope_grade, 1e-6)
+    return max(grid_resolution * 1.65, min(grid_resolution * 2.25, step_limited_radius))
 
 
 def _nearest_node(
