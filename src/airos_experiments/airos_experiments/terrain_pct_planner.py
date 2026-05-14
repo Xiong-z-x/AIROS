@@ -341,13 +341,20 @@ def plan_slam_frontier_path(
         if high_goal_candidates:
             candidates = high_goal_candidates
 
-    scoring_goal_xy = _frontier_high_attractor_xy(
+    attractor_goal_xy = _frontier_elevation_entry_attractor_xy(
         graph.nodes,
         start_xy=start_xy,
         start_z=start_z,
         goal_xy=goal_xy,
         target_z=target_z,
-    ) or goal_xy
+    ) or _frontier_high_attractor_xy(
+        graph.nodes,
+        start_xy=start_xy,
+        start_z=start_z,
+        goal_xy=goal_xy,
+        target_z=target_z,
+    )
+    scoring_goal_xy = attractor_goal_xy or goal_xy
     goal_distance_from_start = math.hypot(
         scoring_goal_xy[0] - start_xy[0],
         scoring_goal_xy[1] - start_xy[1],
@@ -362,6 +369,22 @@ def plan_slam_frontier_path(
         for index in candidates
     }
     best_goal_progress = max(goal_progress_by_index.values())
+    if attractor_goal_xy is not None and best_goal_progress <= 0.0:
+        scoring_goal_xy = goal_xy
+        goal_distance_from_start = math.hypot(
+            scoring_goal_xy[0] - start_xy[0],
+            scoring_goal_xy[1] - start_xy[1],
+        )
+        goal_progress_by_index = {
+            index: _goal_progress(
+                start_xy,
+                scoring_goal_xy,
+                (graph.nodes[index].x, graph.nodes[index].y),
+                goal_distance_from_start,
+            )
+            for index in candidates
+        }
+        best_goal_progress = max(goal_progress_by_index.values())
     final_goal_distance_from_start = math.hypot(
         goal_xy[0] - start_xy[0],
         goal_xy[1] - start_xy[1],
@@ -411,6 +434,20 @@ def plan_slam_frontier_path(
         start_z=start_z,
         target_z=target_z,
     ):
+        if attractor_goal_xy is not None and scoring_goal_xy != goal_xy:
+            return plan_slam_frontier_path(
+                graph,
+                start_xy,
+                goal_xy,
+                start_z=start_z,
+                min_path_distance=min_path_distance,
+                max_path_distance=max_path_distance,
+                blocked_points=blocked_points,
+                obstacle_clearance=obstacle_clearance,
+                avoid_points=avoid_points,
+                avoid_clearance=avoid_clearance,
+                target_z=None,
+            )
         return []
 
     path: list[TerrainNode] = []
@@ -450,6 +487,98 @@ def _frontier_low_under_high_goal(
     if node.z >= target_z - 0.45:
         return False
     return math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]) <= 4.0
+
+
+def _frontier_elevation_entry_attractor_xy(
+    nodes: list[TerrainNode],
+    *,
+    start_xy: tuple[float, float],
+    start_z: float,
+    goal_xy: tuple[float, float],
+    target_z: Optional[float],
+) -> Optional[tuple[float, float]]:
+    if target_z is None or target_z <= start_z + 0.45:
+        return None
+    high_threshold = min(target_z, start_z + 0.75)
+    low_threshold = start_z + 0.25
+    high_nodes = [
+        node
+        for node in nodes
+        if node.z >= high_threshold
+        and _vertical_entry_label_priority(node) == 0
+    ]
+    low_nodes = [node for node in nodes if node.z <= low_threshold]
+    if not high_nodes or not low_nodes:
+        return None
+    goal_distance = math.hypot(goal_xy[0] - start_xy[0], goal_xy[1] - start_xy[1])
+    if goal_distance <= 1e-6:
+        return None
+    min_progress = min(4.0, max(1.5, goal_distance * 0.12))
+    lateral_limit = min(7.0, max(4.0, goal_distance * 0.28))
+    entry_candidates = []
+    for high in high_nodes:
+        high_progress = _goal_progress(
+            start_xy,
+            goal_xy,
+            (high.x, high.y),
+            goal_distance,
+        )
+        high_lateral = _goal_corridor_lateral_offset(
+            start_xy,
+            goal_xy,
+            (high.x, high.y),
+            goal_distance,
+        )
+        if high_progress < min_progress or high_lateral > lateral_limit:
+            continue
+        for low in low_nodes:
+            horizontal = math.hypot(high.x - low.x, high.y - low.y)
+            if horizontal < 1.0 or horizontal > 8.0:
+                continue
+            dz = high.z - low.z
+            if dz < 0.25:
+                continue
+            grade = dz / max(horizontal, 1e-6)
+            if grade > 0.70:
+                continue
+            entry_progress = _goal_progress(
+                start_xy,
+                goal_xy,
+                (low.x, low.y),
+                goal_distance,
+            )
+            if max(entry_progress, high_progress) < -1.0:
+                continue
+            low_lateral = _goal_corridor_lateral_offset(
+                start_xy,
+                goal_xy,
+                (low.x, low.y),
+                goal_distance,
+            )
+            if min(low_lateral, high_lateral) > lateral_limit:
+                continue
+            entry_candidates.append(
+                (
+                    low,
+                    high,
+                    min(low_lateral, high_lateral),
+                    entry_progress,
+                    grade,
+                )
+            )
+    if not entry_candidates:
+        return None
+    entry, _, _, _, _ = min(
+        entry_candidates,
+        key=lambda item: (
+            _vertical_entry_label_priority(item[1]),
+            item[2],
+            abs(item[4] - 0.25),
+            math.hypot(item[0].x - start_xy[0], item[0].y - start_xy[1]),
+            -item[3],
+        ),
+    )
+    return (entry.x, entry.y)
 
 
 def _frontier_high_attractor_xy(

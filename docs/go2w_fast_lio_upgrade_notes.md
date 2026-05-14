@@ -631,6 +631,20 @@ Runtime smoke evidence:
     about `0.43 m` and `max_path_z` stayed below about `0.80 m`. A denser
     FAST-LIO/SLAM sampling ablation increased graph size but worsened progress,
     so it was not kept as the default.
+  - A short SLAM-graph probe showed why the robot still does not reliably enter
+    the lower ramp: `/Laser_map_world` already contained lower-ramp-region
+    nodes, but none of those nodes were in the start component
+    (`lower_ramp_reachable=null`). The initial frontier therefore stayed inside
+    the start component and ended around `(-1.29,-7.57,-0.08)` with max path z
+    about `0.20`.
+  - The planner now has regression-covered ramp-entry attractor logic: if a
+    SLAM-detected ramp/step high point has a plausible low-end entry, frontier
+    scoring prefers the low entry instead of the ramp side. If the entry is not
+    reachable enough to make positive progress, the planner falls back to the
+    normal final-goal frontier instead of returning an empty path.
+  - Latest verification after this ramp-entry change: `python3 -m pytest
+    src/airos_experiments/test -q` reported `146 passed, 1 skipped`; `git diff
+    --check` passed; `colcon build --symlink-install` built all 8 packages.
 
 Remaining limitation:
 

@@ -1279,6 +1279,70 @@ def test_slam_frontier_path_prefers_corridor_high_entry_before_final_low_corrido
     assert [node.index for node in path] == [0, 3, 4, 5]
 
 
+def test_slam_frontier_path_prefers_low_end_of_detected_ramp_entry() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 6.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, -4.7, -6.3, 0.02, 'slam_floor', 1.0),
+        TerrainNode(3, -4.7, -2.0, 0.82, 'slam_ramp', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 8.0), (2, 6.0)],
+            [(0, 8.0)],
+            [(0, 6.0)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=10.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 2]
+
+
+def test_slam_frontier_path_falls_back_when_ramp_entry_has_no_reachable_progress() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, -9.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 4.0, -8.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -4.7, -6.3, 0.02, 'slam_floor', 1.0),
+        TerrainNode(4, -4.7, -2.0, 0.82, 'slam_ramp', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 2.2)],
+            [(0, 2.2), (2, 2.2)],
+            [(1, 2.2)],
+            [],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=10.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 1, 2]
+
+
 def test_slam_frontier_path_ignores_remote_high_attractor() -> None:
     nodes = [
         TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
