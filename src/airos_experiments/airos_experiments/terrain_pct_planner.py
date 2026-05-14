@@ -783,6 +783,17 @@ def should_refresh_frontier_stall_monitor(
     return progress >= max(0.0, min_progress)
 
 
+def should_reject_regressive_frontier_path(
+    *,
+    candidate_goal_distance: float,
+    best_goal_distance: Optional[float],
+    regression_tolerance: float,
+) -> bool:
+    if best_goal_distance is None:
+        return False
+    return candidate_goal_distance > best_goal_distance + max(0.0, regression_tolerance)
+
+
 def _weak_components(
     adjacency: list[list[tuple[int, float]]],
 ) -> tuple[list[int], list[int]]:
@@ -877,6 +888,7 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('frontier_stall_timeout_sec', 8.0)
         self.declare_parameter('frontier_stall_min_progress', 0.20)
         self.declare_parameter('frontier_failed_clearance', 1.6)
+        self.declare_parameter('frontier_goal_regression_tolerance', 1.5)
 
         world_file = Path(str(self.get_parameter('world_file').value))
         self._world_frame = str(self.get_parameter('world_frame').value)
@@ -987,6 +999,9 @@ class TerrainPctPlanner(Node):
         )
         self._frontier_failed_clearance = float(
             self.get_parameter('frontier_failed_clearance').value
+        )
+        self._frontier_goal_regression_tolerance = float(
+            self.get_parameter('frontier_goal_regression_tolerance').value
         )
         self._frontier_target_z: Optional[float] = None
         self._use_initial_pose_anchor = bool(
@@ -1131,6 +1146,8 @@ class TerrainPctPlanner(Node):
         self._last_planned_path: list[TerrainNode] = []
         self._active_frontier_path: list[TerrainNode] = []
         self._active_frontier_final_goal_xy: Optional[tuple[float, float]] = None
+        self._frontier_progress_final_goal_xy: Optional[tuple[float, float]] = None
+        self._frontier_best_goal_distance: Optional[float] = None
         self._frontier_stall_start_xy: Optional[tuple[float, float]] = None
         self._frontier_stall_start_time_ns: Optional[int] = None
         self._frontier_stall_commanded_motion = False
@@ -1384,6 +1401,7 @@ class TerrainPctPlanner(Node):
     ) -> None:
         if not self._frontier_replan_enabled or self._terrain_map_source != 'slam_cloud':
             return
+        self._reset_frontier_progress_if_new_goal(final_goal_xy)
         if should_hold_active_frontier_path(
             active_path=self._active_frontier_path,
             current_xy=start_xy,
@@ -1397,18 +1415,10 @@ class TerrainPctPlanner(Node):
         self._active_frontier_path = []
         self._active_frontier_final_goal_xy = None
         self._reset_frontier_stall_monitor()
-        path = plan_slam_frontier_path(
-            self._graph,
-            start_xy,
-            final_goal_xy,
+        path = self._find_non_regressive_frontier_path(
+            start_xy=start_xy,
             start_z=start_z,
-            min_path_distance=self._frontier_min_path_distance,
-            max_path_distance=self._frontier_max_path_distance,
-            blocked_points=self._frontier_blocked_points_from_scan(),
-            obstacle_clearance=self._frontier_obstacle_clearance,
-            avoid_points=self._frontier_avoid_points,
-            avoid_clearance=self._frontier_failed_clearance,
-            target_z=self._frontier_target_z,
+            final_goal_xy=final_goal_xy,
         )
         if not path:
             return
@@ -1416,6 +1426,7 @@ class TerrainPctPlanner(Node):
         self._last_planned_path = path
         self._active_frontier_path = path
         self._active_frontier_final_goal_xy = final_goal_xy
+        self._remember_frontier_progress(path[-1], final_goal_xy)
         self._frontier_stall_start_xy = start_xy
         self._frontier_stall_start_time_ns = self.get_clock().now().nanoseconds
         self._frontier_stall_commanded_motion = False
@@ -1432,6 +1443,80 @@ class TerrainPctPlanner(Node):
             f'path_nodes={len(path)}'
         )
         self._publish_and_execute_path(path, msg)
+
+    def _find_non_regressive_frontier_path(
+        self,
+        *,
+        start_xy: tuple[float, float],
+        start_z: float,
+        final_goal_xy: tuple[float, float],
+    ) -> list[TerrainNode]:
+        avoid_points = list(self._frontier_avoid_points)
+        blocked_points = self._frontier_blocked_points_from_scan()
+        for _ in range(8):
+            path = plan_slam_frontier_path(
+                self._graph,
+                start_xy,
+                final_goal_xy,
+                start_z=start_z,
+                min_path_distance=self._frontier_min_path_distance,
+                max_path_distance=self._frontier_max_path_distance,
+                blocked_points=blocked_points,
+                obstacle_clearance=self._frontier_obstacle_clearance,
+                avoid_points=avoid_points,
+                avoid_clearance=self._frontier_failed_clearance,
+                target_z=self._frontier_target_z,
+            )
+            if not path:
+                self._frontier_avoid_points = avoid_points[-8:]
+                return []
+            frontier = path[-1]
+            candidate_distance = math.hypot(
+                frontier.x - final_goal_xy[0],
+                frontier.y - final_goal_xy[1],
+            )
+            if not should_reject_regressive_frontier_path(
+                candidate_goal_distance=candidate_distance,
+                best_goal_distance=self._frontier_best_goal_distance,
+                regression_tolerance=self._frontier_goal_regression_tolerance,
+            ):
+                self._frontier_avoid_points = avoid_points[-8:]
+                return path
+            avoid_points.append((frontier.x, frontier.y))
+        self._frontier_avoid_points = avoid_points[-8:]
+        return []
+
+    def _reset_frontier_progress_if_new_goal(
+        self,
+        final_goal_xy: tuple[float, float],
+    ) -> None:
+        if self._frontier_progress_final_goal_xy is None:
+            self._frontier_progress_final_goal_xy = final_goal_xy
+            self._frontier_best_goal_distance = None
+            return
+        goal_distance = math.hypot(
+            self._frontier_progress_final_goal_xy[0] - final_goal_xy[0],
+            self._frontier_progress_final_goal_xy[1] - final_goal_xy[1],
+        )
+        if goal_distance <= max(0.0, self._duplicate_goal_xy_tolerance):
+            return
+        self._frontier_progress_final_goal_xy = final_goal_xy
+        self._frontier_best_goal_distance = None
+
+    def _remember_frontier_progress(
+        self,
+        frontier: TerrainNode,
+        final_goal_xy: tuple[float, float],
+    ) -> None:
+        distance = math.hypot(
+            frontier.x - final_goal_xy[0],
+            frontier.y - final_goal_xy[1],
+        )
+        if (
+            self._frontier_best_goal_distance is None
+            or distance < self._frontier_best_goal_distance
+        ):
+            self._frontier_best_goal_distance = distance
 
     def _frontier_blocked_points_from_scan(self) -> list[tuple[float, float]]:
         if self._scan_msg is None:

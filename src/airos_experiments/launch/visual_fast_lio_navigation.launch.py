@@ -288,6 +288,7 @@ def generate_launch_description():
             'frontier_stall_timeout_sec': 8.0,
             'frontier_stall_min_progress': 0.20,
             'frontier_failed_clearance': 1.6,
+            'frontier_goal_regression_tolerance': 1.5,
             'send_nav2_goals': LaunchConfiguration('terrain_send_nav2_goals'),
             'nav_execution_mode': LaunchConfiguration('terrain_execution_mode'),
             'direct_cmd_vel_topic': '/cmd_vel_nav',

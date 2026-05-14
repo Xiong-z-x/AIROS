@@ -533,6 +533,20 @@ Runtime smoke evidence:
   1074 to 3529 points, produced 2228 non-zero `/cmd_vel_nav` samples, and
   moved odometry about 20.2 m. This confirms improved goal-directed FAST-LIO
   exploration, not final cross-level acceptance.
+- A later regression-gated run kept frontier choices from moving far away from
+  the final goal after a better frontier had already been found. The first
+  240 s window produced monotonic frontier progress
+  `(-1.29,-7.57) -> (0.56,-0.96) -> (3.34,2.41) -> (3.03,6.34) -> (5.08,9.92)`,
+  grew `/Laser_map_world` from 203615 to 523897 points, grew terrain cloud from
+  1071 to 4761 points, produced 2854 non-zero `/cmd_vel_nav` samples, and moved
+  odometry about 25.4 m. The continued run then published a high-floor
+  `/pct_path` ending near `(5.78,12.93,2.18)`, only about 0.23 m in XY from the
+  requested `(6.0,13.0)` target. This proves the live FAST-LIO map can become
+  connected enough for a cross-level high-floor path, but the follow-up 360 s
+  monitor saw no new `/pct_path`, only 0.16 m additional odometry motion, and
+  minimum odometry-to-goal distance about 5.29 m. Therefore the path-generation
+  side improved substantially, while final motion-to-goal acceptance still
+  failed.
 
 Remaining limitation:
 

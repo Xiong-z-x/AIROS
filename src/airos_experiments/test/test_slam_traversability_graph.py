@@ -20,6 +20,7 @@ from airos_experiments.terrain_pct_planner import (
     should_hold_active_frontier_path,
     should_release_stalled_frontier_path,
     should_refresh_frontier_stall_monitor,
+    should_reject_regressive_frontier_path,
     should_keep_pending_slam_goal,
     plan_slam_frontier_path,
     plan_terrain_path,
@@ -755,6 +756,19 @@ def test_frontier_stall_monitor_refreshes_after_recent_odom_progress() -> None:
         current_xy=(0.35, 0.01),
         monitor_start_xy=(0.0, 0.0),
         min_progress=0.20,
+    )
+
+
+def test_frontier_rejects_large_goal_distance_regression() -> None:
+    assert should_reject_regressive_frontier_path(
+        candidate_goal_distance=13.9,
+        best_goal_distance=10.0,
+        regression_tolerance=1.5,
+    )
+    assert not should_reject_regressive_frontier_path(
+        candidate_goal_distance=11.2,
+        best_goal_distance=10.0,
+        regression_tolerance=1.5,
     )
 
 
