@@ -49,6 +49,13 @@ def test_nav_launch_can_run_controller_only_for_pct_execution() -> None:
     assert "condition=IfCondition(_full_stack_enabled(nav_stack_mode))" in launch_text
 
 
+def test_cleanup_script_stops_fast_lio_scan_projector() -> None:
+    cleanup_script = _read_text('scripts/cleanup_airos_runtime.sh')
+
+    assert "'slam_scan_projector'" in cleanup_script
+    assert 'slam_scan_projector' in cleanup_script.split("leftover_pattern=")[1]
+
+
 def test_gazebo_bridge_does_not_accept_direct_cmd_vel() -> None:
     bridge_entries = yaml.safe_load(
         _read_text('src/airos_sim/config/ros_gz_bridge.yaml')

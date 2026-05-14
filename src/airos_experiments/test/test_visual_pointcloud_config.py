@@ -32,18 +32,25 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "executable='fast_lio_localization_bridge'" in launch_text
     assert "'fast_lio_odom_topic': '/Odometry'" in launch_text
     assert "'wheel_odom_topic': '/odom'" in launch_text
+    assert "'aligned_odom_topic': '/fast_lio_odom_world'" in launch_text
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
     assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('dense_visual_pointcloud', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('pointcloud_spacing', default_value='0.06')" in launch_text
     assert "DeclareLaunchArgument('max_live_points', default_value='180000')" in launch_text
-    assert "DeclareLaunchArgument('fast_lio_pointcloud_spacing', default_value='0.16')" in launch_text
-    assert "DeclareLaunchArgument('fast_lio_max_live_points', default_value='12000')" in launch_text
+    assert (
+        "DeclareLaunchArgument('fast_lio_pointcloud_spacing', default_value='0.16')"
+    ) in launch_text
+    assert (
+        "DeclareLaunchArgument('fast_lio_max_live_points', default_value='12000')"
+    ) in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
     assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
     assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
-    assert "DeclareLaunchArgument('collision_scan_topic', default_value='/slam_scan')" in launch_text
+    assert (
+        "DeclareLaunchArgument('collision_scan_topic', default_value='/slam_scan')"
+    ) in launch_text
     assert "DeclareLaunchArgument('terrain_goal_min_z', default_value='1.60')" in launch_text
     assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
     assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.30')" in launch_text
@@ -53,7 +60,9 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('use_route', default_value='false')" in launch_text
     assert "DeclareLaunchArgument('nav_stack_mode', default_value='safety_only')" in launch_text
     assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
-    assert "DeclareLaunchArgument('world', default_value='large_multilevel_complex')" in launch_text
+    assert (
+        "DeclareLaunchArgument('world', default_value='large_multilevel_complex')"
+    ) in launch_text
     assert "'point_spacing': LaunchConfiguration('fast_lio_pointcloud_spacing')" in launch_text
     assert "'max_live_points': LaunchConfiguration('fast_lio_max_live_points')" in launch_text
     assert "name='dense_building_pointcloud'" in launch_text
@@ -66,10 +75,17 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'slam_map_max_points': LaunchConfiguration('slam_map_max_points')" in launch_text
     assert "'slam_grid_resolution': LaunchConfiguration('slam_grid_resolution')" in launch_text
     assert "'slam_min_cell_points': LaunchConfiguration('slam_min_cell_points')" in launch_text
-    assert "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')" in launch_text
-    assert "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')" in launch_text
+    assert (
+        "'slam_vertical_layer_gap': LaunchConfiguration('slam_vertical_layer_gap')"
+    ) in launch_text
+    assert (
+        "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')"
+    ) in launch_text
     assert "executable='slam_scan_projector'" in launch_text
-    assert "'cloud_topic': '/Laser_map_world'" in launch_text
+    assert "name='fast_lio_registered_aligner'" in launch_text
+    assert "'input_topic': '/cloud_registered'" in launch_text
+    assert "'output_topic': '/cloud_registered_world'" in launch_text
+    assert "'cloud_topic': '/cloud_registered_world'" in launch_text
     assert "'scan_topic': '/slam_scan'" in launch_text
     assert "'min_z': 0.45" in launch_text
     assert "'surface_estimate_radius': 0.75" in launch_text
@@ -77,7 +93,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'collision_scan_topic': LaunchConfiguration('collision_scan_topic')" in launch_text
     assert "'goal_z_policy': 'highest'" in launch_text
     assert "'goal_min_z': LaunchConfiguration('terrain_goal_min_z')" in launch_text
-    assert "'goal_snap_max_distance': 1.0" in launch_text
+    assert "'goal_snap_max_distance': 2.0" in launch_text
     assert "'frontier_replan_enabled': True" in launch_text
     assert "'frontier_min_path_distance': 0.25" in launch_text
     assert "'frontier_max_path_distance': 10.0" in launch_text
@@ -94,11 +110,17 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'grid_resolution': 0.25" in launch_text
     assert "'terrain_cloud_resolution': 0.10" in launch_text
     assert "'odom_topic': '/Odometry'" not in launch_text
-    assert "'odom_topic': '/odom'" in launch_text
+    assert "'odom_topic': '/fast_lio_odom_world'" in launch_text
+    terrain_planner_section = launch_text.split(
+        '    terrain_planner = Node('
+    )[1].split('    route_loader = Node(')[0]
+    assert "'odom_topic': '/odom'" not in terrain_planner_section
+    assert "'odom_topic': '/fast_lio_odom_world'" in terrain_planner_section
     assert "'use_initial_pose_anchor': False" in launch_text
     assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
     assert "'direct_waypoint_tolerance': 0.42" in launch_text
     assert "'direct_goal_tolerance': 0.12" in launch_text
+    assert "'direct_z_tolerance': 0.45" in launch_text
     assert "'direct_max_linear_speed': 0.16" in launch_text
     assert "'direct_max_angular_speed': 0.28" in launch_text
     assert "'large_multilevel_complex_static.sdf'" in launch_text
@@ -122,7 +144,7 @@ def test_frontier_progress_is_committed_after_direct_tracking_reaches_goal() -> 
         '    def _plan_frontier_toward_goal('
     )[1].split('    def _find_non_regressive_frontier_path(')[0]
     direct_reached_section = planner_text.split(
-        '        if goal_distance <= max(0.0, self._direct_goal_tolerance):'
+        '        if _direct_node_reached('
     )[1].split('        self._advance_direct_target')[0]
 
     assert '_remember_frontier_progress' not in frontier_plan_section
@@ -145,9 +167,9 @@ def test_direct_stall_monitor_tracks_current_waypoint_not_path_endpoint() -> Non
     assert direct_tick_section.index('self._advance_direct_target(') < (
         direct_tick_section.index('self._release_stalled_frontier_if_needed(')
     )
-    assert 'tracking_index = min(' in release_section
-    assert 'tracking_goal = self._direct_path[tracking_index]' in release_section
-    assert 'tracking_goal = tracking_path[-1]' in release_section
+    assert 'tracking_goal = select_stall_tracking_goal(' in release_section
+    assert 'active_frontier_path=self._active_frontier_path' in release_section
+    assert 'direct_target_index=self._direct_target_index' in release_section
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:
@@ -236,7 +258,9 @@ def test_external_map_manager_can_be_disabled_for_fast_lio_launch() -> None:
     assert "DeclareLaunchArgument('external_map_manager', default_value='true')" in nav_launch_text
     assert '_external_map_manager_enabled(localization, external_map_manager)' in nav_launch_text
     assert "collision_scan_topic = LaunchConfiguration('collision_scan_topic')" in nav_launch_text
-    assert "DeclareLaunchArgument('collision_scan_topic', default_value='/scan')" in nav_launch_text
+    assert (
+        "DeclareLaunchArgument('collision_scan_topic', default_value='/scan')"
+    ) in nav_launch_text
     assert "{'scan.topic': collision_scan_topic}" in nav_launch_text
 
 

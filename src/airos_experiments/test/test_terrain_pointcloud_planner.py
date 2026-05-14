@@ -26,6 +26,7 @@ from airos_experiments.terrain_pct_planner import (
     build_slam_terrain_graph_from_pointcloud,
     build_slam_terrain_graph_from_points,
     build_terrain_graph,
+    direct_tracking_start_clearance,
     plan_terrain_path,
 )
 
@@ -461,6 +462,15 @@ def test_follow_path_keeps_nearby_ramp_nodes_for_safe_descent() -> None:
     )
 
     assert follow_path == path
+
+
+def test_direct_tracking_uses_wide_start_clearance_to_skip_stale_waypoints() -> None:
+    assert direct_tracking_start_clearance(
+        follow_path_start_clearance=0.12,
+        start_waypoint_clearance=0.75,
+        direct_waypoint_tolerance=0.42,
+        direct_lookahead_dist=0.45,
+    ) == 0.75
 
 
 def test_slope_path_uses_lower_speed_limit() -> None:

@@ -48,4 +48,3 @@ def transform_pose(
         y=y,
         yaw=normalize_angle(alignment.spawn_yaw + pose.yaw),
     )
-

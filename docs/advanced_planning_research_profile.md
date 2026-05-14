@@ -94,11 +94,10 @@ FAST-LIO2 map-planning boundary:
   graph distance, while the active-frontier holder and stall release prevent
   constant target churn.
 - The frontier planner also fuses live `/slam_scan` obstacle points as temporary
-  blocked graph nodes. This is required because runtime evidence showed that
-  FAST-LIO2 `/Laser_map` may retain traversable floor while dropping nearby
-  vertical wall returns from the current frame; planning from `/Laser_map`
-  alone can therefore produce a path that the collision monitor correctly
-  stops.
+  blocked graph nodes. `/slam_scan` is projected from the aligned FAST-LIO2
+  current frame `/cloud_registered_world`, while the accumulated
+  `/Laser_map_world` remains the SLAM map used for terrain planning. This split
+  prevents historical map points from acting as real-time StopZone obstacles.
 - SLAM-cloud graph construction filters low traversable clusters when the same
   grid cell contains a multi-layer or vertically thick point stack above them.
   This reduces false traversability through obstacle bases in raw FAST-LIO maps.

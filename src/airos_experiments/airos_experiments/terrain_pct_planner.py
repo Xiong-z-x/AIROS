@@ -41,7 +41,6 @@ from airos_experiments.sdf_geometry import (
     iter_traversable_boxes,
     load_collision_geometries,
     sample_box_top,
-    terrain_intensity,
 )
 from airos_experiments.slam_traversability_graph import (
     build_slam_graph_from_pointcloud,
@@ -164,6 +163,7 @@ def build_slam_terrain_graph_from_points(
         ),
         min_cell_points=min_cell_points,
         vertical_layer_gap=vertical_layer_gap,
+        obstacle_clearance=robot_radius,
     )
     return _terrain_graph_from_slam_graph(slam_graph)
 
@@ -189,6 +189,7 @@ def build_slam_terrain_graph_from_pointcloud(
         min_cell_points=min_cell_points,
         vertical_layer_gap=vertical_layer_gap,
         max_points=max_points,
+        obstacle_clearance=robot_radius,
     )
     return _terrain_graph_from_slam_graph(slam_graph)
 
@@ -319,6 +320,26 @@ def plan_slam_frontier_path(
     ]
     if bounded_candidates:
         candidates = bounded_candidates
+    if any(
+        _frontier_makes_vertical_progress(
+            graph.nodes[index],
+            start_z=start_z,
+            target_z=target_z,
+        )
+        for index in candidates
+    ):
+        high_goal_candidates = [
+            index
+            for index in candidates
+            if not _frontier_low_under_high_goal(
+                graph.nodes[index],
+                goal_xy=goal_xy,
+                start_z=start_z,
+                target_z=target_z,
+            )
+        ]
+        if high_goal_candidates:
+            candidates = high_goal_candidates
 
     scoring_goal_xy = _frontier_high_attractor_xy(
         graph.nodes,
@@ -414,6 +435,20 @@ def _frontier_goal_progress_penalty(
         return 0
     slack = min(3.0, max(2.0, goal_distance_from_start * 0.10))
     return 1 if progress < best_goal_progress - slack else 0
+
+
+def _frontier_low_under_high_goal(
+    node: TerrainNode,
+    *,
+    goal_xy: tuple[float, float],
+    start_z: float,
+    target_z: Optional[float],
+) -> bool:
+    if target_z is None or target_z <= start_z + 0.45:
+        return False
+    if node.z >= target_z - 0.45:
+        return False
+    return math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]) <= 4.0
 
 
 def _frontier_high_attractor_xy(
@@ -569,6 +604,65 @@ def _goal_search_policies(goal_z_policy: str) -> list[str]:
     return ['nearest_z']
 
 
+def _goal_candidate_indexes(
+    nodes: list[TerrainNode],
+    goal_xy: tuple[float, float],
+    *,
+    z_reference: float,
+    policy: str,
+    max_goal_xy_distance: float,
+    goal_min_z: Optional[float],
+) -> list[int]:
+    if not nodes:
+        return []
+    nearest = sorted(
+        nodes,
+        key=lambda node: math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
+    )
+    if math.isfinite(max_goal_xy_distance):
+        candidates = [
+            node
+            for node in nearest
+            if math.hypot(node.x - goal_xy[0], node.y - goal_xy[1])
+            <= max(0.0, max_goal_xy_distance)
+        ]
+    elif policy in {'highest', 'lowest'}:
+        min_xy = math.hypot(nearest[0].x - goal_xy[0], nearest[0].y - goal_xy[1])
+        candidates = [
+            node
+            for node in nearest[:240]
+            if math.hypot(node.x - goal_xy[0], node.y - goal_xy[1])
+            <= min_xy + 0.75
+        ]
+    else:
+        candidates = nearest[:240]
+    if goal_min_z is not None:
+        candidates = [node for node in candidates if node.z >= goal_min_z]
+    if policy == 'highest':
+        candidates.sort(
+            key=lambda node: (
+                -node.z,
+                math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
+            )
+        )
+    elif policy == 'lowest':
+        candidates.sort(
+            key=lambda node: (
+                node.z,
+                math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
+            )
+        )
+    else:
+        candidates.sort(
+            key=lambda node: (
+                math.hypot(node.x - goal_xy[0], node.y - goal_xy[1])
+                + abs(node.z - z_reference) * 0.6,
+                math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
+            )
+        )
+    return [node.index for node in candidates]
+
+
 def _plan_terrain_path_once(
     graph: TerrainGraph,
     start_xy: tuple[float, float],
@@ -587,25 +681,16 @@ def _plan_terrain_path_once(
         start_xy,
         start_z,
     )
-    goal_index = _nearest_node(
+    goal_indexes = _goal_candidate_indexes(
         graph.nodes,
         goal_xy,
         z_reference=start_z,
         policy=goal_z_policy,
+        max_goal_xy_distance=max_goal_xy_distance,
+        goal_min_z=goal_min_z,
     )
-    if start_index is None or goal_index is None:
+    if start_index is None or not goal_indexes:
         return []
-    goal_node = graph.nodes[goal_index]
-    if goal_min_z is not None and goal_node.z < goal_min_z:
-        return []
-    if (
-        math.isfinite(max_goal_xy_distance)
-        and math.hypot(goal_node.x - goal_xy[0], goal_node.y - goal_xy[1])
-        > max(0.0, max_goal_xy_distance)
-    ):
-        return []
-    if start_index == goal_index:
-        return [graph.nodes[start_index]]
 
     blocked_nodes = _nodes_near_blocked_points(
         graph.nodes,
@@ -613,46 +698,55 @@ def _plan_terrain_path_once(
         obstacle_clearance,
     )
     blocked_nodes.discard(start_index)
-    blocked_nodes.discard(goal_index)
+    for goal_index in goal_indexes:
+        if start_index == goal_index:
+            return [graph.nodes[start_index]]
 
-    distances = [math.inf] * len(graph.nodes)
-    parents: list[Optional[int]] = [None] * len(graph.nodes)
-    distances[start_index] = 0.0
-    queue: list[tuple[float, int]] = [
-        (_heuristic(graph.nodes[start_index], graph.nodes[goal_index]), start_index)
-    ]
+        candidate_blocked_nodes = set(blocked_nodes)
+        candidate_blocked_nodes.discard(goal_index)
 
-    while queue:
-        _, current = heapq.heappop(queue)
-        if current == goal_index:
-            break
-        current_distance = distances[current]
-        if not math.isfinite(current_distance):
-            continue
-        for neighbor, edge_cost in graph.adjacency[current]:
-            if neighbor in blocked_nodes:
-                continue
-            next_distance = current_distance + edge_cost
-            if next_distance >= distances[neighbor]:
-                continue
-            distances[neighbor] = next_distance
-            parents[neighbor] = current
-            priority = next_distance + _heuristic(
-                graph.nodes[neighbor],
-                graph.nodes[goal_index],
+        distances = [math.inf] * len(graph.nodes)
+        parents: list[Optional[int]] = [None] * len(graph.nodes)
+        distances[start_index] = 0.0
+        queue: list[tuple[float, int]] = [
+            (
+                _heuristic(graph.nodes[start_index], graph.nodes[goal_index]),
+                start_index,
             )
-            heapq.heappush(queue, (priority, neighbor))
+        ]
 
-    if parents[goal_index] is None:
-        return []
+        while queue:
+            _, current = heapq.heappop(queue)
+            if current == goal_index:
+                break
+            current_distance = distances[current]
+            if not math.isfinite(current_distance):
+                continue
+            for neighbor, edge_cost in graph.adjacency[current]:
+                if neighbor in candidate_blocked_nodes:
+                    continue
+                next_distance = current_distance + edge_cost
+                if next_distance >= distances[neighbor]:
+                    continue
+                distances[neighbor] = next_distance
+                parents[neighbor] = current
+                priority = next_distance + _heuristic(
+                    graph.nodes[neighbor],
+                    graph.nodes[goal_index],
+                )
+                heapq.heappush(queue, (priority, neighbor))
 
-    path: list[TerrainNode] = []
-    cursor: Optional[int] = goal_index
-    while cursor is not None:
-        path.append(graph.nodes[cursor])
-        cursor = parents[cursor]
-    path.reverse()
-    return path
+        if parents[goal_index] is None:
+            continue
+
+        path: list[TerrainNode] = []
+        cursor: Optional[int] = goal_index
+        while cursor is not None:
+            path.append(graph.nodes[cursor])
+            cursor = parents[cursor]
+        path.reverse()
+        return path
+    return []
 
 
 def _terrain_graph_route_diagnostics(
@@ -830,6 +924,8 @@ def advance_direct_target_index(
     current_index: int,
     current_xy: tuple[float, float],
     waypoint_tolerance: float,
+    current_z: Optional[float] = None,
+    z_tolerance: float = math.inf,
 ) -> int:
     if not path:
         return 0
@@ -838,9 +934,23 @@ def advance_direct_target_index(
 
     def distance_at(candidate_index: int) -> float:
         candidate = path[candidate_index]
-        return math.hypot(candidate.x - current_xy[0], candidate.y - current_xy[1])
+        xy_distance = math.hypot(
+            candidate.x - current_xy[0],
+            candidate.y - current_xy[1],
+        )
+        return xy_distance + _direct_height_error(
+            candidate,
+            current_z=current_z,
+            z_tolerance=z_tolerance,
+        )
 
-    while index < len(path) - 1 and distance_at(index) <= tolerance:
+    while index < len(path) - 1 and _direct_node_reached(
+        path[index],
+        current_xy=current_xy,
+        current_z=current_z,
+        xy_tolerance=tolerance,
+        z_tolerance=z_tolerance,
+    ):
         index += 1
 
     best_index = index
@@ -852,9 +962,104 @@ def advance_direct_target_index(
             best_distance = candidate_distance
 
     index = best_index
-    while index < len(path) - 1 and distance_at(index) <= tolerance:
+    while index < len(path) - 1 and _direct_node_reached(
+        path[index],
+        current_xy=current_xy,
+        current_z=current_z,
+        xy_tolerance=tolerance,
+        z_tolerance=z_tolerance,
+    ):
         index += 1
     return index
+
+
+def _direct_height_error(
+    node: TerrainNode,
+    *,
+    current_z: Optional[float],
+    z_tolerance: float,
+) -> float:
+    if current_z is None or not math.isfinite(z_tolerance):
+        return 0.0
+    return max(0.0, abs(node.z - current_z) - max(0.0, z_tolerance))
+
+
+def _direct_node_reached(
+    node: TerrainNode,
+    *,
+    current_xy: tuple[float, float],
+    current_z: Optional[float],
+    xy_tolerance: float,
+    z_tolerance: float,
+) -> bool:
+    xy_distance = math.hypot(node.x - current_xy[0], node.y - current_xy[1])
+    if xy_distance > max(0.0, xy_tolerance):
+        return False
+    return _direct_height_error(
+        node,
+        current_z=current_z,
+        z_tolerance=z_tolerance,
+    ) <= 0.0
+
+
+def direct_tracking_start_clearance(
+    *,
+    follow_path_start_clearance: float,
+    start_waypoint_clearance: float,
+    direct_waypoint_tolerance: float,
+    direct_lookahead_dist: float,
+) -> float:
+    return max(
+        0.0,
+        follow_path_start_clearance,
+        start_waypoint_clearance,
+        direct_waypoint_tolerance,
+        direct_lookahead_dist,
+    )
+
+
+def drop_regressive_start_waypoints(
+    path: list[TerrainNode],
+    *,
+    start_xy: tuple[float, float],
+    final_goal_xy: tuple[float, float],
+    regression_tolerance: float,
+) -> list[TerrainNode]:
+    if len(path) <= 1:
+        return path
+    start_goal_distance = math.hypot(
+        final_goal_xy[0] - start_xy[0],
+        final_goal_xy[1] - start_xy[1],
+    )
+    tolerance = max(0.0, regression_tolerance)
+    keep_index = 0
+    for index, node in enumerate(path[:-1]):
+        node_goal_distance = math.hypot(
+            final_goal_xy[0] - node.x,
+            final_goal_xy[1] - node.y,
+        )
+        if node_goal_distance > start_goal_distance + tolerance:
+            keep_index = index + 1
+            continue
+        break
+    return path[keep_index:] or [path[-1]]
+
+
+def select_stall_tracking_goal(
+    *,
+    direct_path: list[TerrainNode],
+    active_frontier_path: list[TerrainNode],
+    direct_target_index: int,
+) -> Optional[TerrainNode]:
+    if active_frontier_path:
+        return active_frontier_path[-1]
+    if not direct_path:
+        return None
+    tracking_index = min(
+        max(direct_target_index, 0),
+        len(direct_path) - 1,
+    )
+    return direct_path[tracking_index]
 
 
 def should_reject_regressive_frontier_path(
@@ -941,6 +1146,7 @@ class TerrainPctPlanner(Node):
         self.declare_parameter('direct_lookahead_dist', 0.45)
         self.declare_parameter('direct_waypoint_tolerance', 0.24)
         self.declare_parameter('direct_goal_tolerance', 0.30)
+        self.declare_parameter('direct_z_tolerance', 0.45)
         self.declare_parameter('direct_heading_gain', 1.4)
         self.declare_parameter('direct_max_linear_speed', 0.20)
         self.declare_parameter('direct_min_linear_speed', 0.035)
@@ -1016,6 +1222,9 @@ class TerrainPctPlanner(Node):
         )
         self._direct_goal_tolerance = float(
             self.get_parameter('direct_goal_tolerance').value
+        )
+        self._direct_z_tolerance = float(
+            self.get_parameter('direct_z_tolerance').value
         )
         self._direct_heading_gain = float(
             self.get_parameter('direct_heading_gain').value
@@ -1743,11 +1952,24 @@ class TerrainPctPlanner(Node):
         final_goal_xy: Optional[tuple[float, float]] = None,
     ) -> None:
         start_xy = self._current_pose()[:2]
+        start_clearance = direct_tracking_start_clearance(
+            follow_path_start_clearance=self._follow_path_start_clearance,
+            start_waypoint_clearance=self._start_waypoint_clearance,
+            direct_waypoint_tolerance=self._direct_waypoint_tolerance,
+            direct_lookahead_dist=self._direct_lookahead_dist,
+        )
         direct_path = _waypoints_after_start_clearance(
             path,
             start_xy,
-            self._follow_path_start_clearance,
+            start_clearance,
         )
+        if final_goal_xy is not None:
+            direct_path = drop_regressive_start_waypoints(
+                direct_path,
+                start_xy=start_xy,
+                final_goal_xy=final_goal_xy,
+                regression_tolerance=self._direct_waypoint_tolerance,
+            )
         self._publish_speed_limit(path)
         self._direct_path = direct_path
         self._direct_final_goal_xy = final_goal_xy
@@ -1766,10 +1988,15 @@ class TerrainPctPlanner(Node):
         if not self._direct_path:
             return
 
-        current_x, current_y, current_yaw, _ = self._current_planar_pose()
+        current_x, current_y, current_yaw, current_z = self._current_planar_pose()
         goal = self._direct_path[-1]
-        goal_distance = math.hypot(goal.x - current_x, goal.y - current_y)
-        if goal_distance <= max(0.0, self._direct_goal_tolerance):
+        if _direct_node_reached(
+            goal,
+            current_xy=(current_x, current_y),
+            current_z=current_z,
+            xy_tolerance=self._direct_goal_tolerance,
+            z_tolerance=self._direct_z_tolerance,
+        ):
             if (
                 self._active_frontier_path
                 and self._pending_final_goal_xy is not None
@@ -1790,12 +2017,12 @@ class TerrainPctPlanner(Node):
             self.get_logger().info('terrain direct tracking goal reached')
             return
 
-        self._advance_direct_target(current_x, current_y)
+        self._advance_direct_target(current_x, current_y, current_z)
         if self._release_stalled_frontier_if_needed((current_x, current_y)):
             return
         self._direct_speed_limit = self._direct_surface_speed_limit()
         self._publish_speed_limit_for_direct_target()
-        target = self._direct_lookahead_target(current_x, current_y)
+        target = self._direct_lookahead_target(current_x, current_y, current_z)
         dx = target.x - current_x
         dy = target.y - current_y
         target_distance = math.hypot(dx, dy)
@@ -1829,17 +2056,21 @@ class TerrainPctPlanner(Node):
         if self._frontier_stall_start_time_ns is None:
             return False
         now_ns = self.get_clock().now().nanoseconds
-        tracking_path = self._direct_path or self._active_frontier_path
+        was_frontier_path = bool(self._active_frontier_path)
+        tracking_path = (
+            self._active_frontier_path
+            if was_frontier_path
+            else self._direct_path
+        )
         if not tracking_path:
             return False
-        if self._direct_path:
-            tracking_index = min(
-                max(self._direct_target_index, 0),
-                len(self._direct_path) - 1,
-            )
-            tracking_goal = self._direct_path[tracking_index]
-        else:
-            tracking_goal = tracking_path[-1]
+        tracking_goal = select_stall_tracking_goal(
+            direct_path=self._direct_path,
+            active_frontier_path=self._active_frontier_path,
+            direct_target_index=self._direct_target_index,
+        )
+        if tracking_goal is None:
+            return False
         tracking_goal_xy = (tracking_goal.x, tracking_goal.y)
         if should_refresh_frontier_stall_monitor(
             current_xy=current_xy,
@@ -1864,7 +2095,6 @@ class TerrainPctPlanner(Node):
         ):
             return False
         stalled_goal = tracking_goal
-        was_frontier_path = bool(self._active_frontier_path)
         if was_frontier_path:
             self._frontier_avoid_points.append((stalled_goal.x, stalled_goal.y))
             self._frontier_avoid_points = self._frontier_avoid_points[-8:]
@@ -1896,18 +2126,26 @@ class TerrainPctPlanner(Node):
         self._frontier_stall_start_time_ns = None
         self._frontier_stall_commanded_motion = False
 
-    def _advance_direct_target(self, current_x: float, current_y: float) -> None:
+    def _advance_direct_target(
+        self,
+        current_x: float,
+        current_y: float,
+        current_z: float,
+    ) -> None:
         self._direct_target_index = advance_direct_target_index(
             self._direct_path,
             self._direct_target_index,
             (current_x, current_y),
             self._direct_waypoint_tolerance,
+            current_z=current_z,
+            z_tolerance=self._direct_z_tolerance,
         )
 
     def _direct_lookahead_target(
         self,
         current_x: float,
         current_y: float,
+        current_z: float,
     ) -> TerrainNode:
         target = self._direct_path[self._direct_target_index]
         target_surface = target.surface_label
@@ -1918,6 +2156,12 @@ class TerrainPctPlanner(Node):
                     return target
                 continue
             distance = math.hypot(candidate.x - current_x, candidate.y - current_y)
+            if _direct_height_error(
+                candidate,
+                current_z=current_z,
+                z_tolerance=self._direct_z_tolerance,
+            ) > 0.0:
+                return target
             if distance >= max(0.0, self._direct_lookahead_dist):
                 return candidate
             target = candidate

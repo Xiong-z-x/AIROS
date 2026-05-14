@@ -51,6 +51,8 @@ def build_slam_graph_from_pointcloud(
     min_cell_points: int = 2,
     vertical_layer_gap: float = 0.18,
     max_points: int = 180000,
+    obstacle_clearance: float = 0.0,
+    vertical_obstacle_min_height: float = 0.45,
 ) -> SlamTerrainGraph:
     return build_slam_graph_from_points(
         sample_xyz_points(msg, max_points=max_points),
@@ -60,6 +62,8 @@ def build_slam_graph_from_pointcloud(
         max_surface_transition_height=max_surface_transition_height,
         min_cell_points=min_cell_points,
         vertical_layer_gap=vertical_layer_gap,
+        obstacle_clearance=obstacle_clearance,
+        vertical_obstacle_min_height=vertical_obstacle_min_height,
     )
 
 
@@ -71,6 +75,8 @@ def build_slam_graph_from_points(
     max_surface_transition_height: float = 0.12,
     min_cell_points: int = 2,
     vertical_layer_gap: float = 0.18,
+    obstacle_clearance: float = 0.0,
+    vertical_obstacle_min_height: float = 0.45,
 ) -> SlamTerrainGraph:
     if not points:
         return SlamTerrainGraph(nodes=[], adjacency=[], terrain_cloud=[])
@@ -79,6 +85,13 @@ def build_slam_graph_from_points(
     for x, y, z in points:
         bins[_bin_key(x, y, grid_resolution)].append((x, y, z))
 
+    obstacle_bins = _vertical_obstacle_bins(
+        bins,
+        min_cell_points=min_cell_points,
+        vertical_layer_gap=vertical_layer_gap,
+        vertical_obstacle_min_height=vertical_obstacle_min_height,
+    )
+    obstacle_clearance = max(0.0, obstacle_clearance)
     nodes: list[SlamTerrainNode] = []
     for (bin_x, bin_y), cell_points in bins.items():
         if len(cell_points) < max(1, min_cell_points):
@@ -101,6 +114,14 @@ def build_slam_graph_from_points(
                 cell_center=(bin_x * grid_resolution, bin_y * grid_resolution),
                 grid_resolution=grid_resolution,
             )
+            if _xy_near_obstacle_bins(
+                node.x,
+                node.y,
+                obstacle_bins,
+                grid_resolution,
+                obstacle_clearance,
+            ):
+                continue
             nodes.append(node)
 
     _classify_nodes(
@@ -118,6 +139,8 @@ def build_slam_graph_from_points(
             max_surface_transition_height,
             max_step_height,
         ),
+        obstacle_bins=obstacle_bins,
+        obstacle_clearance=obstacle_clearance,
     )
     terrain_cloud = [
         (node.x, node.y, node.z, terrain_intensity(node.label.value))
@@ -239,6 +262,37 @@ def _height_clusters(
         current = [point]
     clusters.append(current)
     return clusters
+
+
+def _vertical_obstacle_bins(
+    bins: dict[tuple[int, int], list[tuple[float, float, float]]],
+    *,
+    min_cell_points: int,
+    vertical_layer_gap: float,
+    vertical_obstacle_min_height: float,
+) -> dict[tuple[int, int], tuple[float, float]]:
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]] = {}
+    min_points = max(2, min_cell_points)
+    min_height = max(0.18, vertical_obstacle_min_height)
+    for key, cell_points in bins.items():
+        if len(cell_points) < min_points:
+            continue
+        sorted_points = sorted(cell_points, key=lambda point: point[2])
+        vertical_clusters = []
+        for cluster in _height_clusters(sorted_points, vertical_layer_gap):
+            if len(cluster) < min_points:
+                continue
+            z_values = [point[2] for point in cluster]
+            if max(z_values) - min(z_values) >= min_height:
+                vertical_clusters.append(cluster)
+        if not vertical_clusters:
+            continue
+        high_points = [point for cluster in vertical_clusters for point in cluster]
+        obstacle_bins[key] = (
+            sum(point[0] for point in high_points) / len(high_points),
+            sum(point[1] for point in high_points) / len(high_points),
+        )
+    return obstacle_bins
 
 
 def _blocked_low_cluster_indexes(
@@ -408,6 +462,8 @@ def _build_adjacency(
     max_slope_grade: float,
     max_step_height: float,
     max_surface_transition_height: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    obstacle_clearance: float,
 ) -> list[list[tuple[int, float]]]:
     adjacency: list[list[tuple[int, float]]] = [[] for _ in nodes]
     bins: dict[tuple[int, int], list[int]] = defaultdict(list)
@@ -437,11 +493,225 @@ def _build_adjacency(
             surface_changed = other.label != node.label
             if surface_changed and dz > max(0.0, max_surface_transition_height):
                 continue
+            if _edge_near_obstacle_bins(
+                node.x,
+                node.y,
+                other.x,
+                other.y,
+                obstacle_bins,
+                grid_resolution,
+                obstacle_clearance,
+            ):
+                continue
             cost = math.sqrt(horizontal * horizontal + dz * dz) * (1.0 + grade * 1.8)
             if surface_changed:
                 cost += grid_resolution
             adjacency[node.index].append((other.index, cost))
+    _add_sparse_slope_bridges(
+        adjacency,
+        nodes,
+        bins,
+        grid_resolution=grid_resolution,
+        max_slope_grade=max_slope_grade,
+        max_step_height=max_step_height,
+        max_surface_transition_height=max_surface_transition_height,
+        obstacle_bins=obstacle_bins,
+        obstacle_clearance=obstacle_clearance,
+    )
     return adjacency
+
+
+def _add_sparse_slope_bridges(
+    adjacency: list[list[tuple[int, float]]],
+    nodes: list[SlamTerrainNode],
+    bins: dict[tuple[int, int], list[int]],
+    *,
+    grid_resolution: float,
+    max_slope_grade: float,
+    max_step_height: float,
+    max_surface_transition_height: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    obstacle_clearance: float,
+) -> None:
+    sparse_radius = _slam_sparse_bridge_radius(
+        grid_resolution=grid_resolution,
+        max_slope_grade=max_slope_grade,
+        max_step_height=max_step_height,
+    )
+    for node in nodes:
+        for other in _neighbor_nodes(
+            node,
+            nodes,
+            bins,
+            grid_resolution,
+            sparse_radius,
+        ):
+            if other.index <= node.index:
+                continue
+            if _has_edge(adjacency[node.index], other.index):
+                continue
+            bridge_cost = _sparse_slope_bridge_cost(
+                node,
+                other,
+                grid_resolution=grid_resolution,
+                max_slope_grade=max_slope_grade,
+                max_surface_transition_height=max_surface_transition_height,
+                obstacle_bins=obstacle_bins,
+                obstacle_clearance=obstacle_clearance,
+            )
+            if bridge_cost is None:
+                continue
+            adjacency[node.index].append((other.index, bridge_cost))
+            adjacency[other.index].append((node.index, bridge_cost))
+
+
+def _sparse_slope_bridge_cost(
+    node: SlamTerrainNode,
+    other: SlamTerrainNode,
+    *,
+    grid_resolution: float,
+    max_slope_grade: float,
+    max_surface_transition_height: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    obstacle_clearance: float,
+) -> Optional[float]:
+    horizontal = math.hypot(other.x - node.x, other.y - node.y)
+    if horizontal < grid_resolution * 0.85:
+        return None
+    dz = abs(other.z - node.z)
+    grade = dz / max(horizontal, 1e-6)
+    if grade > max_slope_grade:
+        return None
+    if not _sparse_bridge_uses_vertical_structure(
+        node,
+        other,
+        min_vertical_change=max(0.06, max_surface_transition_height * 0.25),
+    ):
+        return None
+    if _edge_near_obstacle_bins(
+        node.x,
+        node.y,
+        other.x,
+        other.y,
+        obstacle_bins,
+        grid_resolution,
+        max(obstacle_clearance, grid_resolution * 0.60),
+    ):
+        return None
+    surface_changed = other.label != node.label
+    cost = math.sqrt(horizontal * horizontal + dz * dz) * (1.0 + grade * 2.2)
+    if surface_changed:
+        cost += grid_resolution * 1.5
+    return cost
+
+
+def _sparse_bridge_uses_vertical_structure(
+    node: SlamTerrainNode,
+    other: SlamTerrainNode,
+    *,
+    min_vertical_change: float,
+) -> bool:
+    if abs(other.z - node.z) >= min_vertical_change:
+        return True
+    if min(node.z, other.z) < 0.45:
+        return False
+    non_floor_labels = {
+        TraversabilityLabel.RAMP,
+        TraversabilityLabel.STEP,
+        TraversabilityLabel.PLATFORM,
+    }
+    return node.label in non_floor_labels and other.label in non_floor_labels
+
+
+def _has_edge(edges: list[tuple[int, float]], target_index: int) -> bool:
+    return any(index == target_index for index, _ in edges)
+
+
+def _xy_near_obstacle_bins(
+    x: float,
+    y: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    grid_resolution: float,
+    obstacle_clearance: float,
+) -> bool:
+    if not obstacle_bins or obstacle_clearance <= 0.0:
+        return False
+    bin_x, bin_y = _bin_key(x, y, grid_resolution)
+    bin_radius = max(
+        1,
+        int(math.ceil(obstacle_clearance / max(grid_resolution, 1e-6))) + 1,
+    )
+    for bx in range(bin_x - bin_radius, bin_x + bin_radius + 1):
+        for by in range(bin_y - bin_radius, bin_y + bin_radius + 1):
+            obstacle_xy = obstacle_bins.get((bx, by))
+            if obstacle_xy is None:
+                continue
+            if math.hypot(x - obstacle_xy[0], y - obstacle_xy[1]) <= obstacle_clearance:
+                return True
+    return False
+
+
+def _edge_near_obstacle_bins(
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    grid_resolution: float,
+    obstacle_clearance: float,
+) -> bool:
+    if not obstacle_bins or obstacle_clearance <= 0.0:
+        return False
+    mid_x = (start_x + end_x) * 0.5
+    mid_y = (start_y + end_y) * 0.5
+    bin_x, bin_y = _bin_key(mid_x, mid_y, grid_resolution)
+    segment_radius = math.hypot(end_x - start_x, end_y - start_y) * 0.5
+    bin_radius = max(
+        1,
+        int(
+            math.ceil(
+                (obstacle_clearance + segment_radius)
+                / max(grid_resolution, 1e-6)
+            )
+        )
+        + 1,
+    )
+    for bx in range(bin_x - bin_radius, bin_x + bin_radius + 1):
+        for by in range(bin_y - bin_radius, bin_y + bin_radius + 1):
+            obstacle_xy = obstacle_bins.get((bx, by))
+            if obstacle_xy is None:
+                continue
+            distance = _point_to_segment_distance(
+                obstacle_xy[0],
+                obstacle_xy[1],
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+            )
+            if distance <= obstacle_clearance:
+                return True
+    return False
+
+
+def _point_to_segment_distance(
+    point_x: float,
+    point_y: float,
+    start_x: float,
+    start_y: float,
+    end_x: float,
+    end_y: float,
+) -> float:
+    dx = end_x - start_x
+    dy = end_y - start_y
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return math.hypot(point_x - start_x, point_y - start_y)
+    t = ((point_x - start_x) * dx + (point_y - start_y) * dy) / length_sq
+    t = max(0.0, min(1.0, t))
+    closest_x = start_x + t * dx
+    closest_y = start_y + t * dy
+    return math.hypot(point_x - closest_x, point_y - closest_y)
 
 
 def _slam_neighbor_radius(
@@ -452,6 +722,19 @@ def _slam_neighbor_radius(
 ) -> float:
     step_limited_radius = max_step_height / max(max_slope_grade, 1e-6)
     return max(grid_resolution * 1.65, min(grid_resolution * 2.25, step_limited_radius))
+
+
+def _slam_sparse_bridge_radius(
+    *,
+    grid_resolution: float,
+    max_slope_grade: float,
+    max_step_height: float,
+) -> float:
+    step_limited_radius = max_step_height / max(max_slope_grade, 1e-6)
+    return max(
+        grid_resolution * 3.25,
+        min(grid_resolution * 4.5, step_limited_radius * 1.7),
+    )
 
 
 def _nearest_node(

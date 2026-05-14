@@ -461,17 +461,16 @@ Implemented:
   `frontier_min_path_distance:=0.25` and `frontier_max_path_distance:=10.0` in the
   default visual launch. This prevents the controller from chasing a far
   frontier in one command before the live SLAM map has expanded.
-- Frontier planning fuses live `/scan` obstacle points through
+- Frontier planning fuses live obstacle points through
   `frontier_obstacle_scan_topic:=/slam_scan`,
   `frontier_obstacle_clearance:=0.45`, and
   `frontier_obstacle_range_max:=3.0`. This is intentionally local and
-  temporary: `/Laser_map_world` remains the SLAM map source, while `/slam_scan` blocks
-  nearby frontier graph nodes that FAST-LIO2 did not preserve as vertical
-  obstacles in the map output.
-- `/slam_scan` now estimates the local surface height from nearby FAST-LIO map
-  points before applying the vertical obstacle band. This prevents flat or
-  stale odometry `z` from making high-floor or ramp surface points appear as
-  StopZone obstacles in the 2D safety scan.
+  temporary: `/Laser_map_world` remains the accumulated SLAM planning map, while
+  `/slam_scan` is projected from aligned FAST-LIO2 current-frame points on
+  `/cloud_registered_world`.
+- `/slam_scan` estimates the local surface height before applying the vertical
+  obstacle band. This keeps ramp/floor surfaces out of the 2D safety scan and
+  avoids using historical accumulated map points as real-time StopZone inputs.
 - SLAM-cloud graph construction now filters low surface clusters under
   multi-layer or vertically thick point stacks, so obstacle bases are not
   treated as traversable ground in narrow point-cloud passages.
@@ -583,13 +582,32 @@ Runtime smoke evidence:
   frontier paths. The final planner keeps the optional blocked-node API for
   future targeted use, while the default final path remains driven by the
   FAST-LIO traversability graph.
+- 2026-05-14 follow-up root-cause result: the failure is no longer "FAST-LIO2
+  cannot build high-floor points." A live snapshot contained high points around
+  the third-floor goal, but the raw SLAM traversability graph split ramp/stair
+  and deck samples into isolated components. The graph now adds constrained
+  sparse slope bridges for sparse FAST-LIO ramp/stair samples, while keeping
+  obstacle-base and wall-crossing regression tests. The planner also tries
+  multiple goal candidates within the snap radius, so a disconnected high
+  island does not block a reachable high-floor candidate nearby.
+- With those changes, an offline rebuild from the live `/Laser_map_world`
+  snapshot produced a high-floor plan (`path_nodes=21`, endpoint z about
+  `2.14`, max path z about `2.25`, endpoint XY error about `1.72 m` with
+  `goal_snap_max_distance:=2.0`). A restarted runtime then logged repeated
+  `pending final goal became reachable` events and published high `/pct_path`
+  instances with max z about `2.35`. Therefore the SLAM-map to PCT-path part
+  is now demonstrated in live FAST-LIO data.
+- The remaining blocker is physical execution of the high-floor path. In the
+  same runtime, FAST-LIO aligned odometry approached the high-goal XY area
+  (`min_goal_xy` about `0.28 m`), but `fast_lio_odom_world.z` stayed below
+  about `0.65 m`, and Gazebo ground-truth pose stayed near `z=-0.005`. This
+  proves the robot is not climbing to the high deck even when a high `/pct_path`
+  exists. Next work should focus on terrain-aware execution of 3D waypoints
+  and ramp/stair approach constraints, not on claiming FAST-LIO/PCT completion.
 
 Remaining limitation:
 
 - This is not yet a fully accepted cross-level FAST-LIO2 navigation chain.
-  The complete sampled point-cloud graph can route from the spawn area to the
-  third level in tests, but the live FAST-LIO local map at startup does not yet
-  cover and connect the high-floor goal region. The current runtime can move
-  toward a reachable frontier and keep the final goal pending, but it still
-  needs an end-to-end acceptance run proving that motion expands the FAST-LIO
-  map enough to replan and reach the requested high floor.
+  FAST-LIO2 SLAM map generation and high-floor PCT path generation have runtime
+  evidence, but end-to-end motion acceptance has not passed because the robot
+  still fails to physically climb from the low floor to the high deck.

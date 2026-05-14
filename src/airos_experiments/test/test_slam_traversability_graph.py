@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import struct
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from airos_experiments.terrain_pct_planner import (
     TerrainGraph,
     TerrainNode,
     advance_direct_target_index,
+    drop_regressive_start_waypoints,
+    select_stall_tracking_goal,
     build_slam_terrain_graph_from_pointcloud,
     should_hold_active_frontier_path,
     should_release_stalled_frontier_path,
@@ -136,6 +139,42 @@ def test_slam_graph_bridges_sparse_ramp_samples_with_safe_grade() -> None:
     assert path[-1].z >= 0.90
 
 
+def test_slam_graph_bridges_wide_sparse_ramp_samples_without_sdf_geometry() -> None:
+    points: list[tuple[float, float, float]] = []
+    for y, z in (
+        (0.0, 0.0),
+        (0.6, 0.12),
+        (1.5, 0.30),
+        (2.4, 0.48),
+        (3.3, 0.66),
+        (4.2, 0.84),
+        (5.1, 1.02),
+    ):
+        for x in (-0.10, 0.0, 0.10):
+            points.append((x, y, z))
+
+    graph = build_slam_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.30,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+        max_slope_grade=0.58,
+        max_step_height=0.36,
+        max_surface_transition_height=0.12,
+    )
+    path = plan_slam_graph_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(0.0, 5.1),
+        start_z=0.0,
+        goal_z_policy='highest',
+    )
+
+    assert path
+    assert path[0].z <= 0.05
+    assert path[-1].z > 0.95
+
+
 def test_slam_graph_rejects_direct_platform_edge_drop() -> None:
     points: list[tuple[float, float, float]] = []
     for x in (0.0, 0.25, 0.50):
@@ -199,6 +238,41 @@ def test_slam_graph_routes_large_world_spawn_to_third_level() -> None:
     assert TraversabilityLabel.STEP in labels
 
 
+def test_slam_terrain_graph_robot_radius_keeps_multilevel_route_reachable() -> None:
+    points = [
+        (x, y, z)
+        for x, y, z, _ in sample_world_cloud(
+            _large_world(),
+            spacing=0.16,
+            include_dynamic=False,
+        )
+    ]
+    graph = build_slam_terrain_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.30,
+        robot_radius=0.35,
+        max_slope_grade=0.58,
+        max_step_height=0.36,
+        max_surface_transition_height=0.12,
+        min_cell_points=2,
+        vertical_layer_gap=0.18,
+    )
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+        max_goal_xy_distance=1.0,
+        goal_min_z=1.60,
+    )
+
+    assert len(graph.nodes) > 10000
+    assert path
+    assert path[-1].z > 2.0
+    assert max(node.z for node in path) > 2.0
+
+
 def test_slam_graph_routes_sparse_same_level_floor_from_spawn() -> None:
     points = [
         (x, y, z)
@@ -252,6 +326,7 @@ def test_terrain_planner_adaptive_goal_policy_falls_back_to_reachable_floor() ->
         goal_xy=(1.0, 0.0),
         start_z=0.0,
         goal_z_policy='highest',
+        goal_min_z=1.0,
     )
     adaptive_path = plan_terrain_path(
         graph,
@@ -264,6 +339,39 @@ def test_terrain_planner_adaptive_goal_policy_falls_back_to_reachable_floor() ->
     assert highest_path == []
     assert adaptive_path
     assert adaptive_path[-1].z < 0.10
+
+
+def test_terrain_path_skips_disconnected_high_goal_island() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.4, 'slam_ramp', 1.0),
+        TerrainNode(2, 2.0, 0.0, 0.8, 'slam_ramp', 1.0),
+        TerrainNode(3, 3.2, 0.0, 2.0, 'slam_deck', 1.0),
+        TerrainNode(4, 2.1, 0.0, 2.2, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 1.1)],
+            [(0, 1.1), (2, 1.1)],
+            [(1, 1.1), (3, 1.4)],
+            [(2, 1.4)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='highest',
+        max_goal_xy_distance=1.5,
+        goal_min_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 1, 2, 3]
 
 
 def test_terrain_planner_rejects_goal_outside_slam_map_coverage() -> None:
@@ -878,6 +986,76 @@ def test_direct_target_index_skips_passed_waypoints_after_path_deviation() -> No
     ) == 3
 
 
+def test_direct_target_index_does_not_skip_unreached_high_waypoint_by_xy_only() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 1.0, 0.0, 0.4, 'slam_ramp', 1.0),
+        TerrainNode(2, 2.0, 0.0, 2.0, 'slam_deck', 1.0),
+    ]
+
+    assert advance_direct_target_index(
+        path,
+        current_index=1,
+        current_xy=(2.02, 0.0),
+        waypoint_tolerance=0.42,
+        current_z=0.45,
+        z_tolerance=0.45,
+    ) == 1
+
+
+def test_frontier_stall_tracking_uses_frontier_endpoint() -> None:
+    frontier_path = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, -1.0, 0.0, 'slam_floor', 1.0),
+    ]
+    direct_path = [
+        TerrainNode(10, 0.0, -9.6, 0.0, 'slam_floor', 1.0),
+        TerrainNode(11, 0.2, -9.2, 0.0, 'slam_floor', 1.0),
+    ]
+
+    tracking_goal = select_stall_tracking_goal(
+        direct_path=direct_path,
+        active_frontier_path=frontier_path,
+        direct_target_index=1,
+    )
+
+    assert tracking_goal == frontier_path[-1]
+
+
+def test_final_direct_stall_tracking_uses_current_waypoint() -> None:
+    direct_path = [
+        TerrainNode(10, 0.0, -9.6, 0.0, 'slam_floor', 1.0),
+        TerrainNode(11, 0.2, -9.2, 0.0, 'slam_floor', 1.0),
+        TerrainNode(12, 2.0, -1.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    tracking_goal = select_stall_tracking_goal(
+        direct_path=direct_path,
+        active_frontier_path=[],
+        direct_target_index=1,
+    )
+
+    assert tracking_goal == direct_path[1]
+
+
+def test_direct_tracking_drops_start_waypoints_that_regress_from_final_goal() -> None:
+    path = [
+        TerrainNode(0, 1.2, 2.1, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.4, 2.5, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 4.0, 8.0, 1.0, 'slam_ramp', 1.0),
+        TerrainNode(3, 6.0, 13.0, 2.0, 'slam_deck', 1.0),
+    ]
+
+    filtered = drop_regressive_start_waypoints(
+        path,
+        start_xy=(2.1, 2.4),
+        final_goal_xy=(6.0, 13.0),
+        regression_tolerance=0.25,
+    )
+
+    assert filtered == path[1:]
+
+
 def test_frontier_rejects_large_goal_distance_regression() -> None:
     assert should_reject_regressive_frontier_path(
         candidate_goal_distance=13.9,
@@ -1062,6 +1240,39 @@ def test_slam_frontier_path_prefers_goal_corridor_over_lateral_high_bump() -> No
     assert [node.index for node in path] == [0, 2, 3]
 
 
+def test_slam_frontier_path_rejects_low_node_under_high_goal() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 4.0, 2.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 5.8, 12.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -1.5, 4.0, 0.65, 'slam_ramp', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 2.2), (4, 4.3)],
+            [(0, 2.2), (2, 2.2)],
+            [(1, 2.2), (3, 10.9)],
+            [(2, 10.9)],
+            [(0, 4.3)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=20.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 4]
+
+
 def test_slam_frontier_path_rejects_reverse_low_bump_for_high_goal() -> None:
     nodes = [
         TerrainNode(0, -4.8, -10.6, 0.0, 'slam_floor', 1.0),
@@ -1153,3 +1364,41 @@ def test_slam_graph_rejects_sparse_edges_through_wall_base_cell() -> None:
     )
 
     assert path == []
+
+
+def test_slam_terrain_graph_inflates_vertical_obstacles_by_robot_radius() -> None:
+    points: list[tuple[float, float, float]] = []
+    for x_index in range(9):
+        x = x_index * 0.25
+        points.append((x, 0.0, 0.0))
+        points.append((x, 0.75, 0.0))
+    for y in (0.25, 0.50):
+        points.append((0.0, y, 0.0))
+        points.append((2.0, y, 0.0))
+    for z in (0.30, 0.38, 0.46, 0.54, 0.62, 0.70, 0.78, 0.86):
+        for dx in (-0.03, 0.0, 0.03):
+            points.append((1.0 + dx, 0.25, z))
+
+    graph = build_slam_terrain_graph_from_pointcloud(
+        _xyz_pointcloud(points),
+        grid_resolution=0.25,
+        robot_radius=0.36,
+        min_cell_points=1,
+        vertical_layer_gap=0.10,
+        max_slope_grade=0.75,
+        max_step_height=0.34,
+    )
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.0, 0.0),
+        start_z=0.0,
+        goal_z_policy='nearest_z',
+    )
+
+    assert path
+    assert max(node.y for node in path) >= 0.70
+    assert all(
+        math.hypot(node.x - 1.0, node.y - 0.25) > 0.36
+        for node in path
+    )

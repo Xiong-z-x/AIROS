@@ -19,6 +19,7 @@ from airos_experiments.fast_lio_frame_alignment import (
     FrameAlignment,
     Pose2D,
     normalize_angle,
+    transform_point,
     transform_pose,
 )
 
@@ -71,6 +72,47 @@ def _compose_map_to_odom(
     return Pose2D(odom_x_in_map, odom_y_in_map, yaw)
 
 
+def _aligned_odom_from_fast_lio(
+    msg: Odometry,
+    *,
+    alignment: FrameAlignment,
+    map_frame: str,
+    base_frame: str,
+) -> Odometry:
+    pose = msg.pose.pose
+    x, y, z = transform_point(
+        float(pose.position.x),
+        float(pose.position.y),
+        float(pose.position.z),
+        alignment,
+    )
+    yaw = normalize_angle(
+        alignment.spawn_yaw
+        + _yaw_from_quaternion(
+            float(pose.orientation.x),
+            float(pose.orientation.y),
+            float(pose.orientation.z),
+            float(pose.orientation.w),
+        )
+    )
+    qx, qy, qz, qw = _quaternion_from_yaw(yaw)
+
+    aligned = Odometry()
+    aligned.header.stamp = msg.header.stamp
+    aligned.header.frame_id = map_frame
+    aligned.child_frame_id = base_frame
+    aligned.pose.pose.position.x = x
+    aligned.pose.pose.position.y = y
+    aligned.pose.pose.position.z = z
+    aligned.pose.pose.orientation.x = qx
+    aligned.pose.pose.orientation.y = qy
+    aligned.pose.pose.orientation.z = qz
+    aligned.pose.pose.orientation.w = qw
+    aligned.pose.covariance = msg.pose.covariance
+    aligned.twist = msg.twist
+    return aligned
+
+
 class FastLioLocalizationBridge(Node):
     def __init__(self) -> None:
         super().__init__('fast_lio_localization_bridge')
@@ -80,6 +122,7 @@ class FastLioLocalizationBridge(Node):
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_footprint')
+        self.declare_parameter('aligned_odom_topic', '/fast_lio_odom_world')
         self.declare_parameter('publish_rate_hz', 20.0)
         self.declare_parameter('max_source_age_sec', 0.8)
         self.declare_parameter('spawn_x', 0.0)
@@ -120,6 +163,11 @@ class FastLioLocalizationBridge(Node):
             qos,
         )
         self._tf_broadcaster = TransformBroadcaster(self)
+        self._aligned_odom_publisher = self.create_publisher(
+            Odometry,
+            str(self.get_parameter('aligned_odom_topic').value),
+            qos,
+        )
         self._fast_lio_odom: Optional[Odometry] = None
         self._wheel_odom: Optional[Odometry] = None
         period = 1.0 / max(
@@ -131,7 +179,8 @@ class FastLioLocalizationBridge(Node):
             'fast_lio localization bridge ready: '
             f'{self.get_parameter("fast_lio_odom_topic").value} + '
             f'{self.get_parameter("wheel_odom_topic").value} -> '
-            f'{self._map_frame}->{self._odom_frame}'
+            f'{self._map_frame}->{self._odom_frame}, '
+            f'aligned odom={self.get_parameter("aligned_odom_topic").value}'
         )
 
     def destroy_node(self) -> bool:
@@ -188,6 +237,14 @@ class FastLioLocalizationBridge(Node):
         transform.transform.rotation.z = qz
         transform.transform.rotation.w = qw
         self._tf_broadcaster.sendTransform(transform)
+        self._aligned_odom_publisher.publish(
+            _aligned_odom_from_fast_lio(
+                self._fast_lio_odom,
+                alignment=self._alignment,
+                map_frame=self._map_frame,
+                base_frame=self._base_frame,
+            )
+        )
 
 
 def main() -> None:
