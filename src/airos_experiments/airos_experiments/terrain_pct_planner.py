@@ -343,6 +343,7 @@ def plan_slam_frontier_path(
 
     scoring_goal_xy = _frontier_high_attractor_xy(
         graph.nodes,
+        start_xy=start_xy,
         start_z=start_z,
         goal_xy=goal_xy,
         target_z=target_z,
@@ -454,6 +455,7 @@ def _frontier_low_under_high_goal(
 def _frontier_high_attractor_xy(
     nodes: list[TerrainNode],
     *,
+    start_xy: tuple[float, float],
     start_z: float,
     goal_xy: tuple[float, float],
     target_z: Optional[float],
@@ -464,16 +466,75 @@ def _frontier_high_attractor_xy(
     high_nodes = [node for node in nodes if node.z >= high_threshold]
     if not high_nodes:
         return None
-    attractor = min(
+    near_goal_attractor = min(
         high_nodes,
         key=lambda node: (
             math.hypot(node.x - goal_xy[0], node.y - goal_xy[1]),
             abs(node.z - target_z),
         ),
     )
-    if math.hypot(attractor.x - goal_xy[0], attractor.y - goal_xy[1]) > 6.0:
+    if math.hypot(near_goal_attractor.x - goal_xy[0], near_goal_attractor.y - goal_xy[1]) <= 6.0:
+        return (near_goal_attractor.x, near_goal_attractor.y)
+
+    goal_distance = math.hypot(goal_xy[0] - start_xy[0], goal_xy[1] - start_xy[1])
+    if goal_distance <= 1e-6:
         return None
+    min_progress = min(4.0, max(1.5, goal_distance * 0.12))
+    lateral_limit = min(5.0, max(3.0, goal_distance * 0.22))
+    corridor_nodes = []
+    for node in high_nodes:
+        progress = _goal_progress(
+            start_xy,
+            goal_xy,
+            (node.x, node.y),
+            goal_distance,
+        )
+        if progress < min_progress:
+            continue
+        lateral = _goal_corridor_lateral_offset(
+            start_xy,
+            goal_xy,
+            (node.x, node.y),
+            goal_distance,
+        )
+        if lateral > lateral_limit:
+            continue
+        corridor_nodes.append((node, progress, lateral))
+    if not corridor_nodes:
+        return None
+    attractor, _, _ = min(
+        corridor_nodes,
+        key=lambda item: (
+            _vertical_entry_label_priority(item[0]),
+            item[2],
+            -item[1],
+            abs(item[0].z - target_z),
+        ),
+    )
     return (attractor.x, attractor.y)
+
+
+def _goal_corridor_lateral_offset(
+    start_xy: tuple[float, float],
+    goal_xy: tuple[float, float],
+    candidate_xy: tuple[float, float],
+    goal_distance_from_start: float,
+) -> float:
+    if goal_distance_from_start <= 1e-6:
+        return 0.0
+    ux = (goal_xy[0] - start_xy[0]) / goal_distance_from_start
+    uy = (goal_xy[1] - start_xy[1]) / goal_distance_from_start
+    dx = candidate_xy[0] - start_xy[0]
+    dy = candidate_xy[1] - start_xy[1]
+    return abs(dx * uy - dy * ux)
+
+
+def _vertical_entry_label_priority(node: TerrainNode) -> int:
+    if 'ramp' in node.surface_label or 'step' in node.surface_label:
+        return 0
+    if 'deck' in node.surface_label or 'platform' in node.surface_label:
+        return 1
+    return 2
 
 
 def _frontier_reverse_penalty(
@@ -870,7 +931,7 @@ def should_release_stalled_frontier_path(
 ) -> bool:
     if not active_path or not commanded_motion or monitor_start_xy is None:
         return False
-    if elapsed_sec < max(0.0, timeout_sec):
+    if elapsed_sec < _frontier_effective_stall_timeout(active_path, timeout_sec):
         return False
     progress = _tracking_progress(
         current_xy=current_xy,
@@ -878,6 +939,23 @@ def should_release_stalled_frontier_path(
         goal_xy=goal_xy,
     )
     return progress < max(0.0, min_progress)
+
+
+def _frontier_effective_stall_timeout(
+    active_path: list[TerrainNode],
+    timeout_sec: float,
+) -> float:
+    base_timeout = max(0.0, timeout_sec)
+    if len(active_path) < 2:
+        return base_timeout
+    return max(base_timeout, min(45.0, _frontier_path_xy_length(active_path) * 4.0))
+
+
+def _frontier_path_xy_length(active_path: list[TerrainNode]) -> float:
+    length = 0.0
+    for previous, current in zip(active_path, active_path[1:]):
+        length += math.hypot(current.x - previous.x, current.y - previous.y)
+    return length
 
 
 def should_refresh_frontier_stall_monitor(
@@ -956,6 +1034,12 @@ def advance_direct_target_index(
     best_index = index
     best_distance = distance_at(index)
     for candidate_index in range(index + 1, len(path)):
+        if _direct_height_error(
+            path[candidate_index],
+            current_z=current_z,
+            z_tolerance=z_tolerance,
+        ) > 0.0:
+            continue
         candidate_distance = distance_at(candidate_index)
         if candidate_distance + 0.05 < best_distance:
             best_index = candidate_index
@@ -1024,8 +1108,16 @@ def drop_regressive_start_waypoints(
     start_xy: tuple[float, float],
     final_goal_xy: tuple[float, float],
     regression_tolerance: float,
+    current_z: Optional[float] = None,
+    z_tolerance: float = math.inf,
 ) -> list[TerrainNode]:
     if len(path) <= 1:
+        return path
+    if current_z is not None and any(
+        _direct_height_error(node, current_z=current_z, z_tolerance=z_tolerance)
+        > 0.0
+        for node in path
+    ):
         return path
     start_goal_distance = math.hypot(
         final_goal_xy[0] - start_xy[0],
@@ -1951,7 +2043,8 @@ class TerrainPctPlanner(Node):
         *,
         final_goal_xy: Optional[tuple[float, float]] = None,
     ) -> None:
-        start_xy = self._current_pose()[:2]
+        start_x, start_y, _, start_z = self._current_planar_pose()
+        start_xy = (start_x, start_y)
         start_clearance = direct_tracking_start_clearance(
             follow_path_start_clearance=self._follow_path_start_clearance,
             start_waypoint_clearance=self._start_waypoint_clearance,
@@ -1962,6 +2055,8 @@ class TerrainPctPlanner(Node):
             path,
             start_xy,
             start_clearance,
+            current_z=start_z,
+            z_tolerance=self._direct_z_tolerance,
         )
         if final_goal_xy is not None:
             direct_path = drop_regressive_start_waypoints(
@@ -1969,6 +2064,8 @@ class TerrainPctPlanner(Node):
                 start_xy=start_xy,
                 final_goal_xy=final_goal_xy,
                 regression_tolerance=self._direct_waypoint_tolerance,
+                current_z=start_z,
+                z_tolerance=self._direct_z_tolerance,
             )
         self._publish_speed_limit(path)
         self._direct_path = direct_path
@@ -2045,7 +2142,12 @@ class TerrainPctPlanner(Node):
             -self._direct_max_angular_speed,
             self._direct_max_angular_speed,
         )
-        if abs(twist.linear.x) > 1e-4 or abs(twist.angular.z) > 1e-4:
+        if direct_command_requests_translation(twist.linear.x):
+            if not self._frontier_stall_commanded_motion:
+                self._frontier_stall_start_xy = (current_x, current_y)
+                self._frontier_stall_start_time_ns = (
+                    self.get_clock().now().nanoseconds
+                )
             self._frontier_stall_commanded_motion = True
         self._direct_cmd_vel_publisher.publish(twist)
 
@@ -2529,13 +2631,20 @@ def _waypoints_after_start_clearance(
     path: list[TerrainNode],
     start_xy: tuple[float, float],
     clearance_radius: float,
+    current_z: Optional[float] = None,
+    z_tolerance: float = math.inf,
 ) -> list[TerrainNode]:
     if len(path) <= 1:
         return path
     filtered: list[TerrainNode] = []
     for node in path:
-        distance = math.hypot(node.x - start_xy[0], node.y - start_xy[1])
-        if distance <= max(0.0, clearance_radius):
+        if _direct_node_reached(
+            node,
+            current_xy=start_xy,
+            current_z=current_z,
+            xy_tolerance=clearance_radius,
+            z_tolerance=z_tolerance,
+        ):
             continue
         filtered.append(node)
     return filtered or [path[-1]]
@@ -2729,7 +2838,7 @@ def _direct_linear_speed(
         return 0.0
     heading_limit = max(max_heading_error_for_forward, 1e-6)
     if abs(heading_error) >= heading_limit:
-        return min(min_linear_speed, capped_speed)
+        return 0.0
     heading_scale = max(
         0.0,
         1.0 - abs(heading_error) / heading_limit,
@@ -2737,6 +2846,13 @@ def _direct_linear_speed(
     distance_scale = min(max(target_distance / max(slow_radius, 1e-6), 0.0), 1.0)
     scaled_speed = capped_speed * max(heading_scale, 0.20) * distance_scale
     return max(min_linear_speed, scaled_speed)
+
+
+def direct_command_requests_translation(
+    linear_x: float,
+    min_linear_x: float = 0.01,
+) -> bool:
+    return abs(linear_x) > max(0.0, min_linear_x)
 
 
 def main() -> None:

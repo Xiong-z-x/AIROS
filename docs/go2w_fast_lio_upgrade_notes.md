@@ -604,6 +604,33 @@ Runtime smoke evidence:
   proves the robot is not climbing to the high deck even when a high `/pct_path`
   exists. Next work should focus on terrain-aware execution of 3D waypoints
   and ramp/stair approach constraints, not on claiming FAST-LIO/PCT completion.
+- 2026-05-14 follow-up after the long-running probes fixed several execution
+  defects but still did not reach full acceptance:
+  - `cleanup_airos_runtime.sh` no longer uses raw `pkill -f`; it filters the
+    current script and ancestor shell PIDs before terminating ROS/Gazebo/RViz
+    runtime processes. This prevents self-killing when the caller command line
+    contains the same launch text.
+  - Direct tracking no longer drops near high waypoints solely by XY distance,
+    no longer skips to a high waypoint until the robot is within z tolerance,
+    and no longer removes cross-level detours as "regressive" when the current
+    height is still low.
+  - Large heading error now produces zero forward speed instead of creeping
+    forward while rotating. The frontier stall timer starts only after a real
+    translational command, and long frontier paths get a length-scaled stall
+    timeout.
+  - Frontier scoring can bias reachable exploration toward high structures
+    along the start-to-goal corridor, while regression tests keep remote or
+    lateral high bumps from dominating the route.
+  - Verification after these changes: `python3 -m pytest
+    src/airos_experiments/test -q` reported `144 passed, 1 skipped`; `git diff
+    --check` passed; `colcon build --symlink-install` built all 8 packages.
+  - Runtime result: repeated 240 s headless runs with
+    `terrain_map_source:=slam_cloud` and target `(6.0, 13.0)` still stayed on
+    the low floor. The best current follow-up run reached about
+    `fast_lio_odom_world=(4.39,3.41,0.34)`, while `max_fast_lio_z` stayed below
+    about `0.43 m` and `max_path_z` stayed below about `0.80 m`. A denser
+    FAST-LIO/SLAM sampling ablation increased graph size but worsened progress,
+    so it was not kept as the default.
 
 Remaining limitation:
 

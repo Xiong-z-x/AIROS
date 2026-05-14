@@ -18,6 +18,7 @@ from airos_experiments.terrain_pct_planner import (
     TerrainGraph,
     TerrainNode,
     advance_direct_target_index,
+    direct_command_requests_translation,
     drop_regressive_start_waypoints,
     select_stall_tracking_goal,
     build_slam_terrain_graph_from_pointcloud,
@@ -913,6 +914,35 @@ def test_stalled_frontier_releases_after_commanded_motion_without_odom_progress(
     )
 
 
+def test_long_frontier_path_waits_longer_before_stall_release() -> None:
+    path = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.0, 2.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 0.0, 4.0, 0.0, 'slam_floor', 1.0),
+    ]
+
+    assert not should_release_stalled_frontier_path(
+        active_path=path,
+        commanded_motion=True,
+        current_xy=(0.02, 0.01),
+        monitor_start_xy=(0.0, 0.0),
+        elapsed_sec=9.0,
+        min_progress=0.20,
+        timeout_sec=8.0,
+        goal_xy=(0.0, 4.0),
+    )
+    assert should_release_stalled_frontier_path(
+        active_path=path,
+        commanded_motion=True,
+        current_xy=(0.02, 0.01),
+        monitor_start_xy=(0.0, 0.0),
+        elapsed_sec=20.0,
+        min_progress=0.20,
+        timeout_sec=8.0,
+        goal_xy=(0.0, 4.0),
+    )
+
+
 def test_stalled_frontier_keeps_active_path_when_odom_progresses() -> None:
     assert not should_release_stalled_frontier_path(
         active_path=[
@@ -942,6 +972,12 @@ def test_stalled_frontier_releases_after_sideways_motion_without_goal_progress()
         timeout_sec=8.0,
         goal_xy=(2.0, 0.0),
     )
+
+
+def test_rotation_only_command_does_not_start_frontier_stall_timer() -> None:
+    assert not direct_command_requests_translation(0.0)
+    assert not direct_command_requests_translation(0.009)
+    assert direct_command_requests_translation(0.035)
 
 
 def test_frontier_stall_monitor_refreshes_after_recent_odom_progress() -> None:
@@ -1001,6 +1037,42 @@ def test_direct_target_index_does_not_skip_unreached_high_waypoint_by_xy_only() 
         current_z=0.45,
         z_tolerance=0.45,
     ) == 1
+
+
+def test_direct_target_index_prefers_reachable_height_over_high_xy_projection() -> None:
+    path = [
+        TerrainNode(0, 3.0, 9.0, 0.6, 'slam_ramp', 1.0),
+        TerrainNode(1, 6.0, 13.0, 2.2, 'slam_deck', 1.0),
+    ]
+
+    assert advance_direct_target_index(
+        path,
+        current_index=0,
+        current_xy=(6.0, 12.9),
+        waypoint_tolerance=0.42,
+        current_z=0.55,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_regression_drop_preserves_high_floor_detour() -> None:
+    path = [
+        TerrainNode(0, 3.0, 9.0, 0.6, 'slam_ramp', 1.0),
+        TerrainNode(1, 4.0, 10.5, 1.2, 'slam_ramp', 1.0),
+        TerrainNode(2, 7.5, 14.0, 2.2, 'slam_deck', 1.0),
+        TerrainNode(3, 6.0, 13.0, 2.2, 'slam_deck', 1.0),
+    ]
+
+    filtered = drop_regressive_start_waypoints(
+        path,
+        start_xy=(5.8, 12.8),
+        final_goal_xy=(6.0, 13.0),
+        regression_tolerance=0.42,
+        current_z=0.55,
+        z_tolerance=0.45,
+    )
+
+    assert filtered == path
 
 
 def test_frontier_stall_tracking_uses_frontier_endpoint() -> None:
@@ -1168,6 +1240,43 @@ def test_slam_frontier_path_uses_final_goal_when_high_attractor_is_remote() -> N
     )
 
     assert [node.index for node in path] == [0, 1]
+
+
+def test_slam_frontier_path_prefers_corridor_high_entry_before_final_low_corridor() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 3.0, -8.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 6.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -0.1, -7.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -0.1, -3.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(5, -0.1, 1.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(6, -0.1, 2.8, 1.8, 'slam_step', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 3.7), (3, 3.0)],
+            [(0, 3.7), (2, 4.3)],
+            [(1, 4.3)],
+            [(0, 3.0), (4, 4.0)],
+            [(3, 4.0), (5, 4.8)],
+            [(4, 4.8)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=12.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 3, 4, 5]
 
 
 def test_slam_frontier_path_ignores_remote_high_attractor() -> None:

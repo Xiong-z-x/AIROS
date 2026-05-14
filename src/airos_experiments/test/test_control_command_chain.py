@@ -56,6 +56,14 @@ def test_cleanup_script_stops_fast_lio_scan_projector() -> None:
     assert 'slam_scan_projector' in cleanup_script.split("leftover_pattern=")[1]
 
 
+def test_cleanup_script_does_not_kill_its_calling_shell_by_pattern() -> None:
+    cleanup_script = _read_text('scripts/cleanup_airos_runtime.sh')
+
+    assert 'protected_pids' in cleanup_script
+    assert 'pgrep -af "$pattern"' in cleanup_script
+    assert 'pkill -f' not in cleanup_script
+
+
 def test_gazebo_bridge_does_not_accept_direct_cmd_vel() -> None:
     bridge_entries = yaml.safe_load(
         _read_text('src/airos_sim/config/ros_gz_bridge.yaml')

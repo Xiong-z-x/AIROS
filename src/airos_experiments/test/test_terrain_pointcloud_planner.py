@@ -447,6 +447,23 @@ def test_nav_waypoints_drop_all_near_start_nodes_but_keep_floor_descent_target()
     assert waypoints == path[2:]
 
 
+def test_direct_clearance_keeps_nearby_high_waypoint_until_height_is_reached() -> None:
+    path = [
+        TerrainNode(0, 0.10, 0.00, 2.05, 'slam_deck', 1.0),
+        TerrainNode(1, 1.00, 0.00, 2.10, 'slam_deck', 1.0),
+    ]
+
+    waypoints = _waypoints_after_start_clearance(
+        path,
+        start_xy=(0.0, 0.0),
+        clearance_radius=0.75,
+        current_z=0.45,
+        z_tolerance=0.45,
+    )
+
+    assert waypoints == path
+
+
 def test_follow_path_keeps_nearby_ramp_nodes_for_safe_descent() -> None:
     path = [
         TerrainNode(0, -0.15, -0.06, 0.37, 'wide_access_ramp/link/collision', 1.0),
@@ -497,7 +514,7 @@ def test_slope_path_uses_lower_speed_limit() -> None:
     ) == 0.22
 
 
-def test_direct_tracking_reduces_forward_speed_for_large_heading_error() -> None:
+def test_direct_tracking_stops_forward_speed_for_large_heading_error() -> None:
     large_heading_speed = _direct_linear_speed(
         speed_limit=0.14,
         max_linear_speed=0.20,
@@ -508,7 +525,7 @@ def test_direct_tracking_reduces_forward_speed_for_large_heading_error() -> None
         slow_radius=0.45,
     )
 
-    assert math.isclose(large_heading_speed, 0.035)
+    assert large_heading_speed == 0.0
     assert _direct_linear_speed(
         speed_limit=0.14,
         max_linear_speed=0.20,
