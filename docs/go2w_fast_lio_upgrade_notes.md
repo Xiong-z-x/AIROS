@@ -515,6 +515,24 @@ Runtime smoke evidence:
   smoke then produced 12 short `/pct_path` refreshes, 416 non-zero
   `/cmd_vel_nav` samples, about 1.124 m odometry motion, and a minimum scan
   clearance of about 0.478 m instead of the previous 0.151 m stop-zone case.
+- A 2026-05-14 high-floor frontier probe improved the live FAST-LIO chain but
+  still did not complete it. In a 300 s run before the latest scoring fix,
+  `/Laser_map_world` grew from 227790 to 657345 points, the terrain cloud grew
+  from 1080 to 4622 points, `/cmd_vel_nav` produced 3512 non-zero samples, and
+  odometry travelled about 25.5 m. The best frontier reached `(4.27, 8.23)`,
+  about 5.07 m from the requested `(6.0, 13.0)` goal, but max path height was
+  only about 0.085 m and collision monitoring stopped progress before the high
+  floor became connected.
+- The same probe exposed two planner defects that were fixed afterward:
+  lateral high bumps could outrank a better final-goal corridor, and the
+  frontier stall monitor only checked total progress from the original
+  frontier start. Regression tests now cover both cases. A short 180 s rerun
+  after fixing remote high-attractor gating produced frontiers
+  `(-1.30,-7.57) -> (0.89,-0.91) -> (4.57,2.76)`, grew
+  `/Laser_map_world` from 186364 to 417805 points, grew terrain cloud from
+  1074 to 3529 points, produced 2228 non-zero `/cmd_vel_nav` samples, and
+  moved odometry about 20.2 m. This confirms improved goal-directed FAST-LIO
+  exploration, not final cross-level acceptance.
 
 Remaining limitation:
 

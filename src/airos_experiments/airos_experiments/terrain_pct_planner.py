@@ -326,6 +326,20 @@ def plan_slam_frontier_path(
         scoring_goal_xy[0] - start_xy[0],
         scoring_goal_xy[1] - start_xy[1],
     )
+    goal_progress_by_index = {
+        index: _goal_progress(
+            start_xy,
+            scoring_goal_xy,
+            (graph.nodes[index].x, graph.nodes[index].y),
+            goal_distance_from_start,
+        )
+        for index in candidates
+    }
+    best_goal_progress = max(goal_progress_by_index.values())
+    final_goal_distance_from_start = math.hypot(
+        goal_xy[0] - start_xy[0],
+        goal_xy[1] - start_xy[1],
+    )
     best_index = min(
         candidates,
         key=lambda index: (
@@ -334,10 +348,14 @@ def plan_slam_frontier_path(
                 start_xy=start_xy,
                 goal_xy=goal_xy,
                 target_z=target_z,
-                goal_distance_from_start=math.hypot(
-                    goal_xy[0] - start_xy[0],
-                    goal_xy[1] - start_xy[1],
-                ),
+                goal_distance_from_start=final_goal_distance_from_start,
+            ),
+            _frontier_goal_progress_penalty(
+                goal_progress_by_index[index],
+                best_goal_progress=best_goal_progress,
+                goal_distance_from_start=goal_distance_from_start,
+                start_z=start_z,
+                target_z=target_z,
             ),
             _frontier_vertical_priority(
                 graph.nodes[index],
@@ -378,6 +396,22 @@ def plan_slam_frontier_path(
     return path
 
 
+def _frontier_goal_progress_penalty(
+    progress: float,
+    *,
+    best_goal_progress: float,
+    goal_distance_from_start: float,
+    start_z: float,
+    target_z: Optional[float],
+) -> int:
+    if target_z is None or target_z <= start_z + 0.45:
+        return 0
+    if best_goal_progress <= 0.0:
+        return 0
+    slack = min(3.0, max(2.0, goal_distance_from_start * 0.10))
+    return 1 if progress < best_goal_progress - slack else 0
+
+
 def _frontier_high_attractor_xy(
     nodes: list[TerrainNode],
     *,
@@ -398,6 +432,8 @@ def _frontier_high_attractor_xy(
             abs(node.z - target_z),
         ),
     )
+    if math.hypot(attractor.x - goal_xy[0], attractor.y - goal_xy[1]) > 6.0:
+        return None
     return (attractor.x, attractor.y)
 
 
@@ -730,6 +766,21 @@ def should_release_stalled_frontier_path(
         current_xy[1] - monitor_start_xy[1],
     )
     return progress < max(0.0, min_progress)
+
+
+def should_refresh_frontier_stall_monitor(
+    *,
+    current_xy: tuple[float, float],
+    monitor_start_xy: Optional[tuple[float, float]],
+    min_progress: float,
+) -> bool:
+    if monitor_start_xy is None:
+        return False
+    progress = math.hypot(
+        current_xy[0] - monitor_start_xy[0],
+        current_xy[1] - monitor_start_xy[1],
+    )
+    return progress >= max(0.0, min_progress)
 
 
 def _weak_components(
@@ -1595,9 +1646,17 @@ class TerrainPctPlanner(Node):
     ) -> bool:
         if self._frontier_stall_start_time_ns is None:
             return False
-        elapsed_sec = (
-            self.get_clock().now().nanoseconds - self._frontier_stall_start_time_ns
-        ) / 1_000_000_000.0
+        now_ns = self.get_clock().now().nanoseconds
+        if should_refresh_frontier_stall_monitor(
+            current_xy=current_xy,
+            monitor_start_xy=self._frontier_stall_start_xy,
+            min_progress=self._frontier_stall_min_progress,
+        ):
+            self._frontier_stall_start_xy = current_xy
+            self._frontier_stall_start_time_ns = now_ns
+            self._frontier_stall_commanded_motion = False
+            return False
+        elapsed_sec = (now_ns - self._frontier_stall_start_time_ns) / 1_000_000_000.0
         if not should_release_stalled_frontier_path(
             active_path=self._active_frontier_path,
             commanded_motion=self._frontier_stall_commanded_motion,

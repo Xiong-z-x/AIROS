@@ -19,6 +19,7 @@ from airos_experiments.terrain_pct_planner import (
     build_slam_terrain_graph_from_pointcloud,
     should_hold_active_frontier_path,
     should_release_stalled_frontier_path,
+    should_refresh_frontier_stall_monitor,
     should_keep_pending_slam_goal,
     plan_slam_frontier_path,
     plan_terrain_path,
@@ -749,6 +750,14 @@ def test_stalled_frontier_keeps_active_path_when_odom_progresses() -> None:
     )
 
 
+def test_frontier_stall_monitor_refreshes_after_recent_odom_progress() -> None:
+    assert should_refresh_frontier_stall_monitor(
+        current_xy=(0.35, 0.01),
+        monitor_start_xy=(0.0, 0.0),
+        min_progress=0.20,
+    )
+
+
 def test_slam_frontier_path_uses_live_obstacle_points_to_avoid_wall_gap() -> None:
     nodes = [
         TerrainNode(0, 0.0, -1.0, 0.0, 'slam_floor', 1.0),
@@ -817,7 +826,7 @@ def test_slam_frontier_path_avoids_recently_failed_frontier_region() -> None:
     assert [node.index for node in path] == [0, 3, 4]
 
 
-def test_slam_frontier_path_tracks_mapped_high_attractor_for_high_goal() -> None:
+def test_slam_frontier_path_uses_final_goal_when_high_attractor_is_remote() -> None:
     nodes = [
         TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
         TerrainNode(1, 2.0, -9.0, 0.0, 'slam_floor', 1.0),
@@ -844,6 +853,76 @@ def test_slam_frontier_path_tracks_mapped_high_attractor_for_high_goal() -> None
         start_z=0.0,
         min_path_distance=1.0,
         max_path_distance=5.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 1]
+
+
+def test_slam_frontier_path_ignores_remote_high_attractor() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, -10.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 2.0, -9.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, -2.0, -9.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, -4.0, -8.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, -4.0, -4.0, 1.7, 'slam_deck', 1.0),
+        TerrainNode(5, 4.0, -6.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(6, 6.0, -3.0, 0.0, 'slam_floor', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 2.2), (2, 2.2)],
+            [(0, 2.2), (5, 3.6)],
+            [(0, 2.2), (3, 2.2)],
+            [(2, 2.2)],
+            [],
+            [(1, 3.6), (6, 3.6)],
+            [(5, 3.6)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, -10.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=1.0,
+        max_path_distance=10.0,
+        target_z=1.6,
+    )
+
+    assert [node.index for node in path] == [0, 1, 5, 6]
+
+
+def test_slam_frontier_path_prefers_goal_corridor_over_lateral_high_bump() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, -1.8, 1.5, 0.75, 'slam_step', 1.0),
+        TerrainNode(2, 1.6, 3.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(3, 3.2, 5.8, 0.0, 'slam_floor', 1.0),
+        TerrainNode(4, 5.5, 12.5, 2.0, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 2.4), (2, 3.4)],
+            [(0, 2.4)],
+            [(0, 3.4), (3, 3.2)],
+            [(2, 3.2)],
+            [],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_slam_frontier_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(6.0, 13.0),
+        start_z=0.0,
+        min_path_distance=0.25,
+        max_path_distance=10.0,
         target_z=1.6,
     )
 
