@@ -192,6 +192,8 @@ def generate_launch_description():
             'min_z': 0.45,
             'max_z': 1.40,
             'max_points': 120000,
+            'surface_estimate_radius': 0.75,
+            'surface_estimate_min_points': 3,
         }],
     )
 
@@ -293,7 +295,7 @@ def generate_launch_description():
             'nav_execution_mode': LaunchConfiguration('terrain_execution_mode'),
             'direct_cmd_vel_topic': '/cmd_vel_nav',
             'direct_lookahead_dist': 0.45,
-            'direct_waypoint_tolerance': 0.24,
+            'direct_waypoint_tolerance': 0.42,
             'direct_goal_tolerance': 0.12,
             'direct_heading_gain': 1.4,
             'direct_max_linear_speed': 0.16,

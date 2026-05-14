@@ -468,6 +468,10 @@ Implemented:
   temporary: `/Laser_map_world` remains the SLAM map source, while `/slam_scan` blocks
   nearby frontier graph nodes that FAST-LIO2 did not preserve as vertical
   obstacles in the map output.
+- `/slam_scan` now estimates the local surface height from nearby FAST-LIO map
+  points before applying the vertical obstacle band. This prevents flat or
+  stale odometry `z` from making high-floor or ramp surface points appear as
+  StopZone obstacles in the 2D safety scan.
 - SLAM-cloud graph construction now filters low surface clusters under
   multi-layer or vertically thick point stacks, so obstacle bases are not
   treated as traversable ground in narrow point-cloud passages.
@@ -547,6 +551,38 @@ Runtime smoke evidence:
   minimum odometry-to-goal distance about 5.29 m. Therefore the path-generation
   side improved substantially, while final motion-to-goal acceptance still
   failed.
+- A subsequent 600 s runtime with local-surface `/slam_scan` projection showed
+  that the safety scan fix reduced immediate false stops but did not complete
+  high-floor navigation. `/Laser_map_world` grew from 93095 to 615983 points,
+  terrain cloud grew from 1078 to 2947 points, `/cmd_vel_nav`,
+  `/cmd_vel_smoothed`, and base controller commands all had non-zero samples,
+  and odometry travelled about 19.0 m. However the best `/pct_path` endpoint was
+  still about 8.11 m from `(6.0,13.0)`, max path height was only about 0.16 m,
+  and odometry ended near `(-0.36,0.22)`. Logs showed repeated stalled frontier
+  releases around the same low-floor region.
+- The frontier progress gate now commits "best progress" only after direct
+  tracking actually reaches a frontier. Planned-but-stalled frontiers no longer
+  permanently tighten the regression gate, preventing one false good-looking
+  path from trapping later exploration around the same low-floor pocket.
+- Direct tracking stall detection now measures progress toward the active
+  direct waypoint instead of raw displacement or whole-path endpoint distance.
+  Final direct paths can be released and replanned if they stall after a pending
+  FAST-LIO goal becomes reachable. Direct target advancement also skips passed
+  waypoints by selecting a closer remaining waypoint, reducing repeated pursuit
+  of small local points after the robot drifts off the planned line.
+- A 360 s emulated FAST-LIO run after these direct-tracking fixes generated
+  high-floor `/pct_path` endpoints close to the requested `(6.0,13.0)` target:
+  best endpoint `(5.73,13.22,2.05)` with XY error about `0.35 m`, and terrain
+  cloud growth from about 2466 to 8650 points. The base command chain remained
+  active and odometry travelled about 17.2 m, but the robot still did not reach
+  the high-floor goal; odometry ended near `(3.85,1.75)` with minimum
+  odometry-to-goal distance about `11.45 m`.
+- Applying local `/scan` obstacle blocking directly to final SLAM-cloud path
+  planning was tested and deliberately not enabled by default: it prevented the
+  high-floor final path from being produced in a 300 s run, leaving only low
+  frontier paths. The final planner keeps the optional blocked-node API for
+  future targeted use, while the default final path remains driven by the
+  FAST-LIO traversability graph.
 
 Remaining limitation:
 

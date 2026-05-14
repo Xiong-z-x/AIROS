@@ -30,6 +30,8 @@ def project_cloud_to_scan(
     min_z: float,
     max_z: float,
     max_points: int = 120000,
+    surface_estimate_radius: float = 0.75,
+    surface_estimate_min_points: int = 3,
 ) -> LaserScan:
     scan = LaserScan()
     scan.header.stamp = cloud.header.stamp
@@ -58,7 +60,17 @@ def project_cloud_to_scan(
     cos_yaw = math.cos(-base_yaw)
     sin_yaw = math.sin(-base_yaw)
 
-    for x, y, z in sample_xyz_points(cloud, max_points=max_points):
+    points = list(sample_xyz_points(cloud, max_points=max_points))
+    base_z = _estimate_local_surface_z(
+        points,
+        base_x=base_x,
+        base_y=base_y,
+        fallback_z=base_z,
+        radius=surface_estimate_radius,
+        min_points=surface_estimate_min_points,
+    )
+
+    for x, y, z in points:
         relative_z = z - base_z
         if relative_z < min_z or relative_z > max_z:
             continue
@@ -80,6 +92,29 @@ def project_cloud_to_scan(
     return scan
 
 
+def _estimate_local_surface_z(
+    points: list[tuple[float, float, float]],
+    *,
+    base_x: float,
+    base_y: float,
+    fallback_z: float,
+    radius: float,
+    min_points: int,
+) -> float:
+    if radius <= 0.0 or min_points <= 0:
+        return fallback_z
+    radius_sq = radius * radius
+    local_z = sorted(
+        z
+        for x, y, z in points
+        if (x - base_x) * (x - base_x) + (y - base_y) * (y - base_y) <= radius_sq
+    )
+    if len(local_z) < min_points:
+        return fallback_z
+    lower_quantile_index = min(len(local_z) - 1, max(0, len(local_z) // 5))
+    return float(local_z[lower_quantile_index])
+
+
 class SlamScanProjector(Node):
     def __init__(self) -> None:
         super().__init__('slam_scan_projector')
@@ -96,6 +131,8 @@ class SlamScanProjector(Node):
         self.declare_parameter('min_z', 0.08)
         self.declare_parameter('max_z', 1.40)
         self.declare_parameter('max_points', 120000)
+        self.declare_parameter('surface_estimate_radius', 0.75)
+        self.declare_parameter('surface_estimate_min_points', 3)
 
         self._cloud: PointCloud2 | None = None
         self._odom: Odometry | None = None
@@ -108,6 +145,12 @@ class SlamScanProjector(Node):
         self._min_z = float(self.get_parameter('min_z').value)
         self._max_z = float(self.get_parameter('max_z').value)
         self._max_points = int(self.get_parameter('max_points').value)
+        self._surface_estimate_radius = float(
+            self.get_parameter('surface_estimate_radius').value
+        )
+        self._surface_estimate_min_points = int(
+            self.get_parameter('surface_estimate_min_points').value
+        )
 
         qos = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -163,6 +206,8 @@ class SlamScanProjector(Node):
             min_z=self._min_z,
             max_z=self._max_z,
             max_points=self._max_points,
+            surface_estimate_radius=self._surface_estimate_radius,
+            surface_estimate_min_points=self._surface_estimate_min_points,
         )
         scan.header.stamp = self.get_clock().now().to_msg()
         self._publisher.publish(scan)

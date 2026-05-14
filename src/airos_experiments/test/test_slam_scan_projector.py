@@ -91,6 +91,32 @@ def test_project_cloud_to_scan_filters_floor_slope_and_high_ceiling_points() -> 
     assert scan.ranges[forward_index] == 2.0
 
 
+def test_project_cloud_to_scan_uses_local_surface_when_odom_z_is_flat() -> None:
+    cloud = _xyz_pointcloud([
+        (0.0, 0.0, 1.00),
+        (0.20, 0.10, 1.01),
+        (-0.20, 0.10, 0.99),
+        (1.00, 0.0, 1.00),
+        (1.50, 0.0, 1.75),
+    ])
+
+    scan = project_cloud_to_scan(
+        cloud,
+        _odom(),
+        frame_id='base_footprint',
+        angle_min=-math.pi / 2.0,
+        angle_max=math.pi / 2.0,
+        angle_increment=math.pi / 6.0,
+        range_min=0.05,
+        range_max=4.0,
+        min_z=0.45,
+        max_z=1.2,
+    )
+
+    forward_index = int(round((0.0 - scan.angle_min) / scan.angle_increment))
+    assert scan.ranges[forward_index] == 1.5
+
+
 def test_project_cloud_to_scan_respects_odom_yaw() -> None:
     cloud = _xyz_pointcloud([
         (1.0, 1.0, 0.2),

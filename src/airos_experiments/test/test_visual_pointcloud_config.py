@@ -72,6 +72,8 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'cloud_topic': '/Laser_map_world'" in launch_text
     assert "'scan_topic': '/slam_scan'" in launch_text
     assert "'min_z': 0.45" in launch_text
+    assert "'surface_estimate_radius': 0.75" in launch_text
+    assert "'surface_estimate_min_points': 3" in launch_text
     assert "'collision_scan_topic': LaunchConfiguration('collision_scan_topic')" in launch_text
     assert "'goal_z_policy': 'highest'" in launch_text
     assert "'goal_min_z': LaunchConfiguration('terrain_goal_min_z')" in launch_text
@@ -95,6 +97,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'odom_topic': '/odom'" in launch_text
     assert "'use_initial_pose_anchor': False" in launch_text
     assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
+    assert "'direct_waypoint_tolerance': 0.42" in launch_text
     assert "'direct_goal_tolerance': 0.12" in launch_text
     assert "'direct_max_linear_speed': 0.16" in launch_text
     assert "'direct_max_angular_speed': 0.28" in launch_text
@@ -109,6 +112,42 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='-1.5708')" in launch_text
     assert "'min_visible_z': 0.08" in launch_text
     assert "'max_points': 800000" in launch_text
+
+
+def test_frontier_progress_is_committed_after_direct_tracking_reaches_goal() -> None:
+    planner_text = _read_text(
+        'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    )
+    frontier_plan_section = planner_text.split(
+        '    def _plan_frontier_toward_goal('
+    )[1].split('    def _find_non_regressive_frontier_path(')[0]
+    direct_reached_section = planner_text.split(
+        '        if goal_distance <= max(0.0, self._direct_goal_tolerance):'
+    )[1].split('        self._advance_direct_target')[0]
+
+    assert '_remember_frontier_progress' not in frontier_plan_section
+    assert '_remember_frontier_progress(goal, self._pending_final_goal_xy)' in (
+        direct_reached_section
+    )
+
+
+def test_direct_stall_monitor_tracks_current_waypoint_not_path_endpoint() -> None:
+    planner_text = _read_text(
+        'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    )
+    direct_tick_section = planner_text.split(
+        '    def _direct_control_tick(self) -> None:'
+    )[1].split('    def _release_stalled_frontier_if_needed(')[0]
+    release_section = planner_text.split(
+        '    def _release_stalled_frontier_if_needed('
+    )[1].split('    def _reset_frontier_stall_monitor(')[0]
+
+    assert direct_tick_section.index('self._advance_direct_target(') < (
+        direct_tick_section.index('self._release_stalled_frontier_if_needed(')
+    )
+    assert 'tracking_index = min(' in release_section
+    assert 'tracking_goal = self._direct_path[tracking_index]' in release_section
+    assert 'tracking_goal = tracking_path[-1]' in release_section
 
 
 def test_sim_launch_defaults_to_native_gazebo_sensor_source() -> None:

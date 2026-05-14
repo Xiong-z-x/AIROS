@@ -225,6 +225,8 @@ def plan_terrain_path(
     goal_z_policy: str = 'highest',
     max_goal_xy_distance: float = math.inf,
     goal_min_z: Optional[float] = None,
+    blocked_points: Optional[list[tuple[float, float]]] = None,
+    obstacle_clearance: float = 0.0,
 ) -> list[TerrainNode]:
     for policy in _goal_search_policies(goal_z_policy):
         path = _plan_terrain_path_once(
@@ -235,6 +237,8 @@ def plan_terrain_path(
             policy,
             max_goal_xy_distance,
             goal_min_z,
+            blocked_points or [],
+            obstacle_clearance,
         )
         if path:
             return path
@@ -573,6 +577,8 @@ def _plan_terrain_path_once(
     goal_z_policy: str,
     max_goal_xy_distance: float,
     goal_min_z: Optional[float],
+    blocked_points: list[tuple[float, float]],
+    obstacle_clearance: float,
 ) -> list[TerrainNode]:
     if not graph.nodes:
         return []
@@ -601,6 +607,14 @@ def _plan_terrain_path_once(
     if start_index == goal_index:
         return [graph.nodes[start_index]]
 
+    blocked_nodes = _nodes_near_blocked_points(
+        graph.nodes,
+        blocked_points,
+        obstacle_clearance,
+    )
+    blocked_nodes.discard(start_index)
+    blocked_nodes.discard(goal_index)
+
     distances = [math.inf] * len(graph.nodes)
     parents: list[Optional[int]] = [None] * len(graph.nodes)
     distances[start_index] = 0.0
@@ -616,6 +630,8 @@ def _plan_terrain_path_once(
         if not math.isfinite(current_distance):
             continue
         for neighbor, edge_cost in graph.adjacency[current]:
+            if neighbor in blocked_nodes:
+                continue
             next_distance = current_distance + edge_cost
             if next_distance >= distances[neighbor]:
                 continue
@@ -756,14 +772,16 @@ def should_release_stalled_frontier_path(
     elapsed_sec: float,
     min_progress: float,
     timeout_sec: float,
+    goal_xy: Optional[tuple[float, float]] = None,
 ) -> bool:
     if not active_path or not commanded_motion or monitor_start_xy is None:
         return False
     if elapsed_sec < max(0.0, timeout_sec):
         return False
-    progress = math.hypot(
-        current_xy[0] - monitor_start_xy[0],
-        current_xy[1] - monitor_start_xy[1],
+    progress = _tracking_progress(
+        current_xy=current_xy,
+        monitor_start_xy=monitor_start_xy,
+        goal_xy=goal_xy,
     )
     return progress < max(0.0, min_progress)
 
@@ -773,14 +791,70 @@ def should_refresh_frontier_stall_monitor(
     current_xy: tuple[float, float],
     monitor_start_xy: Optional[tuple[float, float]],
     min_progress: float,
+    goal_xy: Optional[tuple[float, float]] = None,
 ) -> bool:
     if monitor_start_xy is None:
         return False
-    progress = math.hypot(
-        current_xy[0] - monitor_start_xy[0],
-        current_xy[1] - monitor_start_xy[1],
+    progress = _tracking_progress(
+        current_xy=current_xy,
+        monitor_start_xy=monitor_start_xy,
+        goal_xy=goal_xy,
     )
     return progress >= max(0.0, min_progress)
+
+
+def _tracking_progress(
+    *,
+    current_xy: tuple[float, float],
+    monitor_start_xy: tuple[float, float],
+    goal_xy: Optional[tuple[float, float]] = None,
+) -> float:
+    if goal_xy is None:
+        return math.hypot(
+            current_xy[0] - monitor_start_xy[0],
+            current_xy[1] - monitor_start_xy[1],
+        )
+    start_distance = math.hypot(
+        goal_xy[0] - monitor_start_xy[0],
+        goal_xy[1] - monitor_start_xy[1],
+    )
+    current_distance = math.hypot(
+        goal_xy[0] - current_xy[0],
+        goal_xy[1] - current_xy[1],
+    )
+    return start_distance - current_distance
+
+
+def advance_direct_target_index(
+    path: list[TerrainNode],
+    current_index: int,
+    current_xy: tuple[float, float],
+    waypoint_tolerance: float,
+) -> int:
+    if not path:
+        return 0
+    index = min(max(current_index, 0), len(path) - 1)
+    tolerance = max(0.0, waypoint_tolerance)
+
+    def distance_at(candidate_index: int) -> float:
+        candidate = path[candidate_index]
+        return math.hypot(candidate.x - current_xy[0], candidate.y - current_xy[1])
+
+    while index < len(path) - 1 and distance_at(index) <= tolerance:
+        index += 1
+
+    best_index = index
+    best_distance = distance_at(index)
+    for candidate_index in range(index + 1, len(path)):
+        candidate_distance = distance_at(candidate_index)
+        if candidate_distance + 0.05 < best_distance:
+            best_index = candidate_index
+            best_distance = candidate_distance
+
+    index = best_index
+    while index < len(path) - 1 and distance_at(index) <= tolerance:
+        index += 1
+    return index
 
 
 def should_reject_regressive_frontier_path(
@@ -1153,6 +1227,7 @@ class TerrainPctPlanner(Node):
         self._frontier_stall_commanded_motion = False
         self._frontier_avoid_points: list[tuple[float, float]] = []
         self._direct_path: list[TerrainNode] = []
+        self._direct_final_goal_xy: Optional[tuple[float, float]] = None
         self._direct_target_index = 0
         self._direct_speed_limit = 0.0
         self._terrain_timer = self.create_timer(
@@ -1426,7 +1501,6 @@ class TerrainPctPlanner(Node):
         self._last_planned_path = path
         self._active_frontier_path = path
         self._active_frontier_final_goal_xy = final_goal_xy
-        self._remember_frontier_progress(path[-1], final_goal_xy)
         self._frontier_stall_start_xy = start_xy
         self._frontier_stall_start_time_ns = self.get_clock().now().nanoseconds
         self._frontier_stall_commanded_motion = False
@@ -1554,7 +1628,13 @@ class TerrainPctPlanner(Node):
         if not self._send_nav2_goals:
             return
         if self._nav_execution_mode == 'direct':
-            self._start_direct_tracking(path)
+            self._start_direct_tracking(
+                path,
+                final_goal_xy=(
+                    float(original_goal.pose.position.x),
+                    float(original_goal.pose.position.y),
+                ),
+            )
         elif self._nav_execution_mode == 'follow_path':
             self._send_follow_path_goal(path)
         else:
@@ -1656,16 +1736,27 @@ class TerrainPctPlanner(Node):
             mode='follow_path',
         )
 
-    def _start_direct_tracking(self, path: list[TerrainNode]) -> None:
+    def _start_direct_tracking(
+        self,
+        path: list[TerrainNode],
+        *,
+        final_goal_xy: Optional[tuple[float, float]] = None,
+    ) -> None:
+        start_xy = self._current_pose()[:2]
         direct_path = _waypoints_after_start_clearance(
             path,
-            self._current_pose()[:2],
+            start_xy,
             self._follow_path_start_clearance,
         )
         self._publish_speed_limit(path)
         self._direct_path = direct_path
+        self._direct_final_goal_xy = final_goal_xy
         self._direct_target_index = 0
         self._direct_speed_limit = self._direct_surface_speed_limit()
+        if self._direct_path:
+            self._frontier_stall_start_xy = start_xy
+            self._frontier_stall_start_time_ns = self.get_clock().now().nanoseconds
+            self._frontier_stall_commanded_motion = False
         self.get_logger().info(
             'started terrain-guided direct tracking: '
             f'poses={len(direct_path)} path_nodes={len(path)}'
@@ -1676,12 +1767,16 @@ class TerrainPctPlanner(Node):
             return
 
         current_x, current_y, current_yaw, _ = self._current_planar_pose()
-        if self._release_stalled_frontier_if_needed((current_x, current_y)):
-            return
         goal = self._direct_path[-1]
         goal_distance = math.hypot(goal.x - current_x, goal.y - current_y)
         if goal_distance <= max(0.0, self._direct_goal_tolerance):
+            if (
+                self._active_frontier_path
+                and self._pending_final_goal_xy is not None
+            ):
+                self._remember_frontier_progress(goal, self._pending_final_goal_xy)
             self._direct_path = []
+            self._direct_final_goal_xy = None
             self._direct_target_index = 0
             if not should_hold_active_frontier_path(
                 active_path=self._active_frontier_path,
@@ -1696,6 +1791,8 @@ class TerrainPctPlanner(Node):
             return
 
         self._advance_direct_target(current_x, current_y)
+        if self._release_stalled_frontier_if_needed((current_x, current_y)):
+            return
         self._direct_speed_limit = self._direct_surface_speed_limit()
         self._publish_speed_limit_for_direct_target()
         target = self._direct_lookahead_target(current_x, current_y)
@@ -1732,10 +1829,23 @@ class TerrainPctPlanner(Node):
         if self._frontier_stall_start_time_ns is None:
             return False
         now_ns = self.get_clock().now().nanoseconds
+        tracking_path = self._direct_path or self._active_frontier_path
+        if not tracking_path:
+            return False
+        if self._direct_path:
+            tracking_index = min(
+                max(self._direct_target_index, 0),
+                len(self._direct_path) - 1,
+            )
+            tracking_goal = self._direct_path[tracking_index]
+        else:
+            tracking_goal = tracking_path[-1]
+        tracking_goal_xy = (tracking_goal.x, tracking_goal.y)
         if should_refresh_frontier_stall_monitor(
             current_xy=current_xy,
             monitor_start_xy=self._frontier_stall_start_xy,
             min_progress=self._frontier_stall_min_progress,
+            goal_xy=tracking_goal_xy,
         ):
             self._frontier_stall_start_xy = current_xy
             self._frontier_stall_start_time_ns = now_ns
@@ -1743,28 +1853,40 @@ class TerrainPctPlanner(Node):
             return False
         elapsed_sec = (now_ns - self._frontier_stall_start_time_ns) / 1_000_000_000.0
         if not should_release_stalled_frontier_path(
-            active_path=self._active_frontier_path,
+            active_path=tracking_path,
             commanded_motion=self._frontier_stall_commanded_motion,
             current_xy=current_xy,
             monitor_start_xy=self._frontier_stall_start_xy,
             elapsed_sec=elapsed_sec,
             min_progress=self._frontier_stall_min_progress,
             timeout_sec=self._frontier_stall_timeout_sec,
+            goal_xy=tracking_goal_xy,
         ):
             return False
-        stalled_goal = self._active_frontier_path[-1]
-        self._frontier_avoid_points.append((stalled_goal.x, stalled_goal.y))
-        self._frontier_avoid_points = self._frontier_avoid_points[-8:]
-        self._active_frontier_path = []
-        self._active_frontier_final_goal_xy = None
+        stalled_goal = tracking_goal
+        was_frontier_path = bool(self._active_frontier_path)
+        if was_frontier_path:
+            self._frontier_avoid_points.append((stalled_goal.x, stalled_goal.y))
+            self._frontier_avoid_points = self._frontier_avoid_points[-8:]
+            self._active_frontier_path = []
+            self._active_frontier_final_goal_xy = None
+        else:
+            self._pending_final_goal_xy = self._direct_final_goal_xy or tracking_goal_xy
         self._direct_path = []
+        self._direct_final_goal_xy = None
         self._direct_target_index = 0
         self._reset_frontier_stall_monitor()
         self._publish_direct_stop()
-        self.get_logger().warning(
-            'released stalled FAST-LIO frontier path: '
-            f'frontier=({stalled_goal.x:.2f},{stalled_goal.y:.2f})'
-        )
+        if was_frontier_path:
+            self.get_logger().warning(
+                'released stalled FAST-LIO frontier path: '
+                f'frontier=({stalled_goal.x:.2f},{stalled_goal.y:.2f})'
+            )
+        else:
+            self.get_logger().warning(
+                'released stalled FAST-LIO direct path for replanning: '
+                f'goal=({stalled_goal.x:.2f},{stalled_goal.y:.2f})'
+            )
         if self._pending_final_goal_xy is not None:
             self._try_pending_final_goal()
         return True
@@ -1775,24 +1897,12 @@ class TerrainPctPlanner(Node):
         self._frontier_stall_commanded_motion = False
 
     def _advance_direct_target(self, current_x: float, current_y: float) -> None:
-        while self._direct_target_index < len(self._direct_path) - 1:
-            target = self._direct_path[self._direct_target_index]
-            next_target = self._direct_path[self._direct_target_index + 1]
-            target_distance = math.hypot(
-                target.x - current_x,
-                target.y - current_y,
-            )
-            next_distance = math.hypot(
-                next_target.x - current_x,
-                next_target.y - current_y,
-            )
-            if target_distance <= max(0.0, self._direct_waypoint_tolerance):
-                self._direct_target_index += 1
-                continue
-            if next_distance + 0.05 < target_distance:
-                self._direct_target_index += 1
-                continue
-            return
+        self._direct_target_index = advance_direct_target_index(
+            self._direct_path,
+            self._direct_target_index,
+            (current_x, current_y),
+            self._direct_waypoint_tolerance,
+        )
 
     def _direct_lookahead_target(
         self,
