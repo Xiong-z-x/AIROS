@@ -117,6 +117,76 @@ def test_project_cloud_to_scan_uses_local_surface_when_odom_z_is_flat() -> None:
     assert scan.ranges[forward_index] == 1.5
 
 
+def test_project_cloud_to_scan_ignores_continuous_ramp_surface_points() -> None:
+    cloud = _xyz_pointcloud([
+        (0.00, 0.00, 0.00),
+        (0.40, 0.00, 0.05),
+        (0.80, 0.00, 0.12),
+        (1.20, 0.00, 0.20),
+        (1.60, 0.00, 0.30),
+        (2.00, 0.00, 0.42),
+        (2.40, 0.00, 0.56),
+    ])
+
+    scan = project_cloud_to_scan(
+        cloud,
+        _odom(),
+        frame_id='base_footprint',
+        angle_min=-math.pi / 2.0,
+        angle_max=math.pi / 2.0,
+        angle_increment=math.pi / 6.0,
+        range_min=0.05,
+        range_max=4.0,
+        min_z=0.45,
+        max_z=1.2,
+    )
+
+    forward_index = int(round((0.0 - scan.angle_min) / scan.angle_increment))
+    assert math.isinf(scan.ranges[forward_index])
+
+
+def test_project_cloud_to_scan_keeps_isolated_obstacle_above_ramp_surface() -> None:
+    cloud = _xyz_pointcloud([
+        (0.00, 0.00, 0.00),
+        (0.40, 0.00, 0.05),
+        (0.80, 0.00, 0.10),
+        (2.00, 0.00, 0.70),
+    ])
+
+    scan = project_cloud_to_scan(
+        cloud,
+        _odom(),
+        frame_id='base_footprint',
+        angle_min=-math.pi / 2.0,
+        angle_max=math.pi / 2.0,
+        angle_increment=math.pi / 6.0,
+        range_min=0.05,
+        range_max=4.0,
+        min_z=0.45,
+        max_z=1.2,
+    )
+
+    forward_index = int(round((0.0 - scan.angle_min) / scan.angle_increment))
+    assert scan.ranges[forward_index] == 2.0
+
+
+def test_project_cloud_to_scan_uses_spatial_support_index_for_ramp_filter() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    source = (
+        repo_root / 'src/airos_experiments/airos_experiments/slam_scan_projector.py'
+    ).read_text(encoding='utf-8')
+    projector = source.split('def project_cloud_to_scan(')[1].split(
+        'def _build_lower_support_bins('
+    )[0]
+    support_check = source.split('def _is_supported_ramp_surface_point(')[1].split(
+        'def _estimate_local_surface_z('
+    )[0]
+
+    assert 'support_bins = _build_lower_support_bins(points)' in projector
+    assert 'support_bins=support_bins' in projector
+    assert 'for other_x, other_y, other_z in points:' not in support_check
+
+
 def test_project_cloud_to_scan_respects_odom_yaw() -> None:
     cloud = _xyz_pointcloud([
         (1.0, 1.0, 0.2),

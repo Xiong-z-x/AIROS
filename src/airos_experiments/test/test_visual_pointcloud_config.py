@@ -52,7 +52,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
         "DeclareLaunchArgument('collision_scan_topic', default_value='/slam_scan')"
     ) in launch_text
     assert "DeclareLaunchArgument('terrain_goal_min_z', default_value='1.60')" in launch_text
-    assert "DeclareLaunchArgument('slam_map_max_points', default_value='80000')" in launch_text
+    assert "DeclareLaunchArgument('slam_map_max_points', default_value='180000')" in launch_text
     assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.30')" in launch_text
     assert "DeclareLaunchArgument('slam_min_cell_points', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('slam_vertical_layer_gap', default_value='0.18')" in launch_text
@@ -81,6 +81,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert (
         "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')"
     ) in launch_text
+    assert "DeclareLaunchArgument('terrain_odom_topic', default_value='/fast_lio_odom_world')" in launch_text
     assert "executable='slam_scan_projector'" in launch_text
     assert "name='fast_lio_registered_aligner'" in launch_text
     assert "'input_topic': '/cloud_registered'" in launch_text
@@ -91,12 +92,17 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'surface_estimate_radius': 0.75" in launch_text
     assert "'surface_estimate_min_points': 3" in launch_text
     assert "'collision_scan_topic': LaunchConfiguration('collision_scan_topic')" in launch_text
-    assert "'goal_z_policy': 'highest'" in launch_text
+    assert (
+        "DeclareLaunchArgument('terrain_goal_z_policy', default_value='highest')"
+    ) in launch_text
+    assert "DeclareLaunchArgument('terrain_goal_max_z', default_value='-1.0')" in launch_text
+    assert "'goal_z_policy': LaunchConfiguration('terrain_goal_z_policy')" in launch_text
     assert "'goal_min_z': LaunchConfiguration('terrain_goal_min_z')" in launch_text
+    assert "'goal_max_z': LaunchConfiguration('terrain_goal_max_z')" in launch_text
     assert "'goal_snap_max_distance': 2.0" in launch_text
     assert "'frontier_replan_enabled': True" in launch_text
     assert "'frontier_min_path_distance': 0.25" in launch_text
-    assert "'frontier_max_path_distance': 10.0" in launch_text
+    assert "'frontier_max_path_distance': 14.0" in launch_text
     assert "'frontier_obstacle_scan_topic': '/slam_scan'" in launch_text
     assert "'frontier_obstacle_clearance': 0.45" in launch_text
     assert "'frontier_obstacle_range_max': 3.0" in launch_text
@@ -109,25 +115,28 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text
     assert "'grid_resolution': 0.25" in launch_text
     assert "'terrain_cloud_resolution': 0.10" in launch_text
+    assert "'max_step_height': 0.50" in launch_text
     assert "'odom_topic': '/Odometry'" not in launch_text
-    assert "'odom_topic': '/fast_lio_odom_world'" in launch_text
+    assert "'odom_topic': LaunchConfiguration('terrain_odom_topic')" in launch_text
     terrain_planner_section = launch_text.split(
         '    terrain_planner = Node('
-    )[1].split('    route_loader = Node(')[0]
+    )[1].split('    return LaunchDescription([')[0]
     assert "'odom_topic': '/odom'" not in terrain_planner_section
-    assert "'odom_topic': '/fast_lio_odom_world'" in terrain_planner_section
+    assert "'odom_topic': LaunchConfiguration('terrain_odom_topic')" in (
+        terrain_planner_section
+    )
     assert "'use_initial_pose_anchor': False" in launch_text
     assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
     assert "'direct_waypoint_tolerance': 0.42" in launch_text
-    assert "'direct_goal_tolerance': 0.12" in launch_text
+    assert "'direct_goal_tolerance': 0.30" in launch_text
     assert "'direct_z_tolerance': 0.45" in launch_text
-    assert "'direct_max_linear_speed': 0.16" in launch_text
-    assert "'direct_max_angular_speed': 0.28" in launch_text
+    assert "'direct_max_linear_speed': 0.30" in launch_text
+    assert "'direct_max_angular_speed': 0.45" in launch_text
     assert "'large_multilevel_complex_static.sdf'" in launch_text
     assert "'start_waypoint_clearance': 0.75" in launch_text
     assert "'follow_path_start_clearance': 0.12" in launch_text
-    assert "'slope_speed_limit': 0.09" in launch_text
-    assert "'flat_speed_limit': 0.18" in launch_text
+    assert "'slope_speed_limit': 0.16" in launch_text
+    assert "'flat_speed_limit': 0.32" in launch_text
     assert "'initial_surface_z_hint': LaunchConfiguration('robot_spawn_z')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_y', default_value='-10.0')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
@@ -144,12 +153,55 @@ def test_frontier_progress_is_committed_after_direct_tracking_reaches_goal() -> 
         '    def _plan_frontier_toward_goal('
     )[1].split('    def _find_non_regressive_frontier_path(')[0]
     direct_reached_section = planner_text.split(
-        '        if _direct_node_reached('
+        '        if direct_tracking_reaches_goal('
     )[1].split('        self._advance_direct_target')[0]
 
     assert '_remember_frontier_progress' not in frontier_plan_section
     assert '_remember_frontier_progress(goal, self._pending_final_goal_xy)' in (
         direct_reached_section
+    )
+
+
+def test_direct_tracking_goal_reach_requires_original_final_goal() -> None:
+    planner_text = _read_text(
+        'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    )
+    direct_tick_section = planner_text.split(
+        '    def _direct_control_tick(self) -> None:'
+    )[1].split('    def _maybe_log_direct_diagnostics(')[0]
+
+    assert 'direct_tracking_reaches_goal(' in direct_tick_section
+    assert 'final_goal_xy=self._direct_final_goal_xy' in direct_tick_section
+    assert '_direct_node_reached(\n            goal,' not in direct_tick_section
+
+
+def test_goal_callback_uses_pose_z_as_floor_aware_goal_constraint() -> None:
+    planner_text = _read_text(
+        'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    )
+    goal_callback = planner_text.split(
+        '    def _goal_callback(self, msg: PoseStamped) -> None:'
+    )[1].split('    def _try_pending_final_goal(self) -> None:')[0]
+
+    assert 'goal_z = float(msg.pose.position.z)' in goal_callback
+    assert 'effective_goal_min_z' in goal_callback
+    assert 'goal_min_z=effective_goal_min_z' in goal_callback
+    assert 'target_z=' in goal_callback
+
+
+def test_goal_callback_rejects_regressive_high_final_path_before_execution() -> None:
+    planner_text = _read_text(
+        'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    )
+    goal_callback = planner_text.split(
+        '    def _goal_callback(self, msg: PoseStamped) -> None:'
+    )[1].split('    def _try_pending_final_goal(self) -> None:')[0]
+
+    rejection_index = goal_callback.index('should_reject_regressive_final_path(')
+    execution_index = goal_callback.index('_publish_and_execute_path(path, msg)')
+    assert rejection_index < execution_index
+    assert 'self._plan_frontier_toward_goal(' in (
+        goal_callback[rejection_index:execution_index]
     )
 
 

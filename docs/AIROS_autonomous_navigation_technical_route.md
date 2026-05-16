@@ -4,6 +4,8 @@
 日期：2026-05-07  
 主线目标：在 Ubuntu 22.04 / ROS 2 Humble / Gazebo Fortress 环境中，实现平面单层场景下的 Go2W 风格轮足机器人 SLAM 建图、路线标定、Nav2 自主导航、动态避障与可复现实验验证。
 
+> 状态说明：本文是早期平面单层技术路线基线。当前项目已进入 FAST-LIO2 SLAM 点云、SLAM-cloud traversability graph、高层 `/pct_path` 生成和迁移前封板阶段；最新接手入口见 `docs/handoff/README.md`。若本文与当前代码/测试或 `docs/handoff/` 不一致，以当前代码/测试和 `docs/handoff/` 为准。
+
 ## 0. 最终技术决策
 
 本项目只采用一条主线，不再并行维护版本或算法分支。

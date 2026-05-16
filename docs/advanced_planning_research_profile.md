@@ -78,10 +78,9 @@ FAST-LIO2 map-planning boundary:
   map segmentation and cross-level connector logic can evolve without touching
   Nav2 action execution.
 - The visual FAST-LIO planner launch now uses `slam_min_cell_points:=2`,
-  `goal_z_policy:=adaptive`, and a 1.0 m goal snap limit. This keeps sparse
-  FAST-LIO clouds connected enough for same-level goals while rejecting goals
-  outside the currently mapped SLAM coverage instead of snapping to a wrong
-  floor or map boundary.
+  `goal_z_policy:=highest`, and a 2.0 m goal snap limit. This lets sparse
+  FAST-LIO high-floor candidates be selected when the SLAM graph has a
+  reachable upper structure, while still avoiding arbitrary low-floor snaps.
 - When a requested SLAM-cloud goal is not yet reachable, the planner can publish
   a bounded FAST-LIO exploration-frontier path inside the current reachable
   component. It preserves the original final goal and retries it after later
@@ -90,7 +89,7 @@ FAST-LIO2 map-planning boundary:
   of keeping a stale one. For high-floor goals, it also biases the next
   frontier toward high structures already mapped by FAST-LIO2, which helps the
   robot search toward lateral ramps or upper decks instead of only the final XY
-  line. The default launch keeps frontier paths between 0.25 m and 10.0 m of
+  line. The default launch keeps frontier paths between 0.25 m and 14.0 m of
   graph distance, while the active-frontier holder and stall release prevent
   constant target churn.
 - The frontier planner also fuses live `/slam_scan` obstacle points as temporary
@@ -101,16 +100,13 @@ FAST-LIO2 map-planning boundary:
 - SLAM-cloud graph construction filters low traversable clusters when the same
   grid cell contains a multi-layer or vertically thick point stack above them.
   This reduces false traversability through obstacle bases in raw FAST-LIO maps.
-- Current smoke evidence shows same-level planning from FAST-LIO2 `/Laser_map`
-  works. For an initially unreachable cross-level target, the planner publishes
-  rolling exploration-frontier paths toward the target and can drive the robot
-  along them. A scan-fused smoke increased minimum scan clearance near the
-  problematic lower-floor wall from about 0.151 m to about 0.48 m, with
-  non-zero `/cmd_vel_nav` and about 1.12 m odometry motion. Complete cross-level
-  arrival is still not accepted because the live FAST-LIO map must be expanded,
-  reconnected, and followed to the high-floor target in one acceptance run.
-- Therefore the complete FAST-LIO2 SLAM -> cross-level planning -> motion
-  closed loop remains a next upgrade task, not a completed claim.
+- Current online evidence shows live `/Laser_map_world` can generate a
+  high-floor `/pct_path` above `z=2.0` after the SLAM map grows. One accepted
+  path-generation run grew `/Laser_map_world` from 69075 to 594777 points,
+  produced `PATH_MAXZ_OVERALL=2.155`, and kept `/cmd_vel_nav` plus `/odom`
+  active. Physical high-deck arrival is still not accepted.
+- Therefore the next upgrade task is terrain-aware execution of the high path,
+  not more documentation of the FAST-LIO/PCT path-generation claim.
 
 ## 强化学习边界
 

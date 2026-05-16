@@ -36,13 +36,11 @@ class LifecycleActivator(Node):
         get_state = self.create_client(GetState, f'{node_name}/get_state')
         change_state = self.create_client(ChangeState, f'{node_name}/change_state')
 
-        if not get_state.wait_for_service(timeout_sec=self._service_timeout_sec):
-            self.get_logger().warn(f'{node_name}: get_state service unavailable')
-            return
-        if not change_state.wait_for_service(timeout_sec=self._service_timeout_sec):
-            self.get_logger().warn(
-                f'{node_name}: change_state service unavailable'
-            )
+        if not self._wait_for_lifecycle_services(
+            node_name,
+            get_state,
+            change_state,
+        ):
             return
 
         for _ in range(max(self._attempts, 1)):
@@ -76,6 +74,31 @@ class LifecycleActivator(Node):
         if state is None or state.id != State.PRIMARY_STATE_ACTIVE:
             label = state.label if state is not None else 'unknown'
             self.get_logger().warn(f'{node_name}: final state is {label}')
+
+    def _wait_for_lifecycle_services(
+        self,
+        node_name: str,
+        get_state,
+        change_state,
+    ) -> bool:
+        for _ in range(max(self._attempts, 1)):
+            get_state_ready = get_state.wait_for_service(
+                timeout_sec=self._service_timeout_sec,
+            )
+            change_state_ready = change_state.wait_for_service(
+                timeout_sec=self._service_timeout_sec,
+            )
+            if get_state_ready and change_state_ready:
+                return True
+            self._sleep_once()
+
+        if not get_state.service_is_ready():
+            self.get_logger().warn(f'{node_name}: get_state service unavailable')
+        if not change_state.service_is_ready():
+            self.get_logger().warn(
+                f'{node_name}: change_state service unavailable'
+            )
+        return False
 
     def _get_state(self, client) -> State | None:
         future = client.call_async(GetState.Request())

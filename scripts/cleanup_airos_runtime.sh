@@ -21,6 +21,7 @@ patterns=(
   'airos_experiments/terrain_pct_planner'
   'nav2_lifecycle_manager/lifecycle_manager'
   'nav2_map_server/map_server'
+  'nav2_map_server/map_saver_server'
   'nav2_amcl/amcl'
   'nav2_controller/controller_server'
   'nav2_smoother/smoother_server'

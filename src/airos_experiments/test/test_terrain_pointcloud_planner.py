@@ -12,9 +12,12 @@ from airos_experiments.sdf_geometry import (
     inverse_transform_point,
     load_collision_geometries,
     sample_world_cloud,
+    transform_point,
 )
 from airos_experiments.terrain_pct_planner import (
+    TerrainGraph,
     TerrainNode,
+    TerrainPctPlanner,
     _direct_linear_speed,
     _goal_is_active,
     _path_speed_limit,
@@ -26,8 +29,14 @@ from airos_experiments.terrain_pct_planner import (
     build_slam_terrain_graph_from_pointcloud,
     build_slam_terrain_graph_from_points,
     build_terrain_graph,
+    advance_direct_target_index,
+    direct_tracking_progress_z,
     direct_tracking_start_clearance,
+    direct_tracking_gate_z,
+    drop_regressive_start_waypoints,
     plan_terrain_path,
+    should_defer_pending_final_goal_for_active_frontier,
+    should_reject_regressive_final_path,
 )
 
 
@@ -185,6 +194,88 @@ def test_slam_terrain_graph_allows_step_sized_slam_surface_transitions() -> None
     )
 
 
+def test_final_high_path_rejects_deck_edge_step_without_ramp_approach() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.8, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(2, 1.5, 0.0, 0.74, 'slam_step', 1.0),
+        TerrainNode(3, 2.3, 0.0, 1.2, 'slam_deck', 1.0),
+        TerrainNode(4, 0.0, 1.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(5, 0.8, 1.0, 0.25, 'slam_ramp', 1.0),
+        TerrainNode(6, 1.6, 1.0, 0.55, 'slam_ramp', 1.0),
+        TerrainNode(7, 2.3, 1.0, 1.2, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 0.8), (4, 1.0)],
+            [(0, 0.8), (2, 0.9)],
+            [(1, 0.9), (3, 1.0)],
+            [(2, 1.0)],
+            [(0, 1.0), (5, 1.0)],
+            [(4, 1.0), (6, 1.0)],
+            [(5, 1.0), (7, 1.0)],
+            [(6, 1.0)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(2.3, 0.5),
+        start_z=0.0,
+        goal_z_policy='highest',
+        goal_min_z=1.0,
+    )
+
+    assert [node.index for node in path] == [0, 4, 5, 6, 7]
+
+
+def test_final_high_path_rejects_step_drop_after_high_entry() -> None:
+    nodes = [
+        TerrainNode(0, 0.0, 0.0, 0.0, 'slam_floor', 1.0),
+        TerrainNode(1, 0.8, 0.0, 0.25, 'slam_ramp', 1.0),
+        TerrainNode(2, 1.6, 0.0, 0.55, 'slam_ramp', 1.0),
+        TerrainNode(3, 2.4, 0.0, 0.82, 'slam_step', 1.0),
+        TerrainNode(4, 3.2, 0.0, -0.02, 'slam_step', 1.0),
+        TerrainNode(5, 4.0, 0.0, 1.2, 'slam_deck', 1.0),
+        TerrainNode(6, 0.8, 1.0, 0.25, 'slam_ramp', 1.0),
+        TerrainNode(7, 1.6, 1.0, 0.55, 'slam_ramp', 1.0),
+        TerrainNode(8, 2.4, 1.0, 0.82, 'slam_step', 1.0),
+        TerrainNode(9, 3.2, 1.0, 1.05, 'slam_step', 1.0),
+        TerrainNode(10, 4.0, 1.0, 1.2, 'slam_deck', 1.0),
+    ]
+    graph = TerrainGraph(
+        nodes=nodes,
+        adjacency=[
+            [(1, 0.8), (6, 1.3)],
+            [(0, 0.8), (2, 0.8)],
+            [(1, 0.8), (3, 0.8)],
+            [(2, 0.8), (4, 0.8)],
+            [(3, 0.8), (5, 0.8)],
+            [(4, 0.8)],
+            [(0, 1.3), (7, 0.8)],
+            [(6, 0.8), (8, 0.8)],
+            [(7, 0.8), (9, 0.8)],
+            [(8, 0.8), (10, 0.8)],
+            [(9, 0.8)],
+        ],
+        terrain_cloud=[],
+    )
+
+    path = plan_terrain_path(
+        graph,
+        start_xy=(0.0, 0.0),
+        goal_xy=(4.0, 0.5),
+        start_z=0.0,
+        goal_z_policy='highest',
+        goal_min_z=1.0,
+    )
+
+    assert [node.index for node in path] == [0, 6, 7, 8, 9, 10]
+
+
 def test_sdf_surface_cloud_includes_ramp_and_mezzanine_deck() -> None:
     points = sample_world_cloud(_realistic_world(), spacing=0.25)
 
@@ -264,6 +355,85 @@ def test_pct_routes_from_floor_to_third_level_through_stairs_and_ramps() -> None
         dz = abs(second.z - first.z)
         assert dz <= 0.20
         assert dz / max(horizontal, 1e-6) <= 0.62
+
+
+def test_large_multilevel_lower_ramp_physically_connects_landings() -> None:
+    lower_ramp = _box_by_model(_large_world(), 'lower_access_ramp')
+    lower_landing = _box_by_model(_large_world(), 'ramp_lower_landing')
+    upper_landing = _box_by_model(_large_world(), 'ramp_upper_landing')
+    deck = _box_by_model(_large_world(), 'second_floor_deck')
+
+    ramp_half_x = lower_ramp.size[0] / 2.0
+    ramp_top_z = lower_ramp.size[2] / 2.0
+    lower_start = transform_point(
+        lower_ramp.transform,
+        (-ramp_half_x, 0.0, ramp_top_z),
+    )
+    upper_end = transform_point(
+        lower_ramp.transform,
+        (ramp_half_x, 0.0, ramp_top_z),
+    )
+    lower_landing_top = transform_point(
+        lower_landing.transform,
+        (0.0, 0.0, lower_landing.size[2] / 2.0),
+    )
+    upper_landing_top = transform_point(
+        upper_landing.transform,
+        (0.0, 0.0, upper_landing.size[2] / 2.0),
+    )
+    deck_top = transform_point(deck.transform, (0.0, 0.0, deck.size[2] / 2.0))
+
+    assert abs(lower_start[2] - lower_landing_top[2]) <= 0.12
+    assert abs(upper_end[2] - upper_landing_top[2]) <= 0.12
+    assert abs(upper_landing_top[2] - deck_top[2]) <= 0.12
+
+
+def test_large_multilevel_lower_ramp_has_robot_body_clearance() -> None:
+    lower_ramp = _box_by_model(_large_world(), 'lower_access_ramp')
+    deck = _box_by_model(_large_world(), 'second_floor_deck')
+    robot_body_height = 0.18
+    body_clearance_margin = 0.10
+    required_clearance = robot_body_height + body_clearance_margin
+
+    ramp_half_x = lower_ramp.size[0] / 2.0
+    ramp_top_z = lower_ramp.size[2] / 2.0
+    deck_bottom_local_z = -deck.size[2] / 2.0
+    for fraction in (0.0, 0.25, 0.50, 0.75, 1.0):
+        ramp_local_x = -ramp_half_x + fraction * lower_ramp.size[0]
+        ramp_top = transform_point(
+            lower_ramp.transform,
+            (ramp_local_x, 0.0, ramp_top_z),
+        )
+        deck_local = inverse_transform_point(deck.transform, ramp_top)
+        deck_covers_ramp_center = (
+            abs(deck_local[0]) <= deck.size[0] / 2.0
+            and abs(deck_local[1]) <= deck.size[1] / 2.0
+        )
+        if not deck_covers_ramp_center:
+            continue
+        deck_bottom = transform_point(
+            deck.transform,
+            (deck_local[0], deck_local[1], deck_bottom_local_z),
+        )
+        assert deck_bottom[2] - ramp_top[2] >= required_clearance
+
+
+def test_large_multilevel_upper_landing_starts_at_ramp_top() -> None:
+    lower_ramp = _box_by_model(_large_world(), 'lower_access_ramp')
+    upper_landing = _box_by_model(_large_world(), 'ramp_upper_landing')
+
+    landing_leading_edge = transform_point(
+        upper_landing.transform,
+        (0.0, -upper_landing.size[1] / 2.0, upper_landing.size[2] / 2.0),
+    )
+    ramp_local = inverse_transform_point(lower_ramp.transform, landing_leading_edge)
+    ramp_top_at_landing_edge = transform_point(
+        lower_ramp.transform,
+        (ramp_local[0], 0.0, lower_ramp.size[2] / 2.0),
+    )
+
+    assert abs(ramp_local[1]) <= lower_ramp.size[1] / 2.0
+    assert abs(landing_leading_edge[2] - ramp_top_at_landing_edge[2]) <= 0.05
 
 
 def test_large_world_ramp_transitions_use_center_entry_corridor() -> None:
@@ -464,6 +634,327 @@ def test_direct_clearance_keeps_nearby_high_waypoint_until_height_is_reached() -
     assert waypoints == path
 
 
+def test_direct_tracking_drops_regressive_low_prefix_without_skipping_high_entry() -> None:
+    path = [
+        TerrainNode(0, 3.26, 1.20, 0.01, 'slam_floor', 1.0),
+        TerrainNode(1, 4.93, 1.37, 0.14, 'slam_step', 1.0),
+        TerrainNode(2, 4.70, 5.30, 0.90, 'slam_ramp', 1.0),
+        TerrainNode(3, 6.00, 13.00, 2.20, 'slam_deck', 1.0),
+    ]
+
+    filtered = drop_regressive_start_waypoints(
+        path,
+        start_xy=(4.37, 1.45),
+        final_goal_xy=(6.0, 13.0),
+        regression_tolerance=0.42,
+        current_z=0.30,
+        z_tolerance=0.45,
+    )
+
+    assert filtered == path[1:]
+
+
+def test_direct_tracking_drops_regressive_low_ramp_prefix_before_high_entry() -> None:
+    path = [
+        TerrainNode(0, 3.20, -12.20, 0.05, 'slam_ramp', 1.0),
+        TerrainNode(1, 4.90, -11.40, 0.36, 'slam_ramp', 1.0),
+        TerrainNode(2, -4.70, -6.30, 0.10, 'slam_floor', 1.0),
+        TerrainNode(3, -4.70, -3.40, 0.42, 'slam_ramp', 1.0),
+        TerrainNode(4, 6.00, 13.00, 2.20, 'slam_deck', 1.0),
+    ]
+
+    filtered = drop_regressive_start_waypoints(
+        path,
+        start_xy=(5.31, -11.35),
+        final_goal_xy=(6.0, 13.0),
+        regression_tolerance=0.42,
+        current_z=0.22,
+        z_tolerance=0.45,
+    )
+
+    assert filtered == path[2:]
+
+
+def test_pending_final_goal_waits_for_active_frontier_endpoint() -> None:
+    active_frontier_path = [
+        TerrainNode(0, -3.40, -3.96, 0.13, 'slam_ramp', 1.0),
+        TerrainNode(1, -3.60, -0.83, 0.42, 'slam_ramp', 1.0),
+    ]
+
+    assert should_defer_pending_final_goal_for_active_frontier(
+        active_path=active_frontier_path,
+        current_xy=(-3.15, -1.67),
+        goal_tolerance=0.30,
+        execution_active=True,
+        active_final_goal_xy=(6.0, 13.0),
+        final_goal_xy=(6.0, 13.0),
+        final_goal_tolerance=0.05,
+    )
+
+
+def test_high_final_path_rejects_large_initial_goal_regression() -> None:
+    path = [
+        TerrainNode(0, -3.15, -1.67, 0.31, 'slam_ramp', 1.0),
+        TerrainNode(1, 7.18, -11.29, 0.65, 'slam_ramp', 1.0),
+        TerrainNode(2, 6.00, 13.00, 2.20, 'slam_deck', 1.0),
+    ]
+
+    assert should_reject_regressive_final_path(
+        path,
+        start_xy=(-3.15, -1.67),
+        final_goal_xy=(6.0, 13.0),
+        start_z=0.31,
+        regression_tolerance=1.5,
+    )
+
+
+def test_high_final_path_rejects_low_floor_detour_before_ramp_entry() -> None:
+    path = [
+        TerrainNode(0, -1.00, -2.80, 0.00, 'slam_floor', 1.0),
+        TerrainNode(1, 2.20, -3.05, -0.14, 'slam_floor', 1.0),
+        TerrainNode(2, 3.59, -0.89, -0.35, 'slam_floor', 1.0),
+        TerrainNode(3, 4.82, 2.09, -0.67, 'slam_ramp', 1.0),
+        TerrainNode(4, 4.76, 4.80, 0.43, 'slam_step', 1.0),
+        TerrainNode(5, 0.40, 3.60, 0.65, 'slam_deck', 1.0),
+    ]
+
+    assert should_reject_regressive_final_path(
+        path,
+        start_xy=(-1.0, -2.8),
+        final_goal_xy=(0.4, 3.6),
+        start_z=0.0,
+        regression_tolerance=1.5,
+    )
+
+
+def test_direct_tracking_gate_uses_surface_height_for_high_waypoint_progress() -> None:
+    terrain_nodes = [
+        TerrainNode(100, 0.34, 0.35, -0.02, 'slam_floor', 1.0),
+        TerrainNode(101, 0.58, 0.64, 0.76, 'slam_deck', 1.0),
+    ]
+    direct_path = [
+        TerrainNode(10, 0.58, 0.64, 0.76, 'slam_deck', 1.0),
+        TerrainNode(11, 1.46, 1.14, 0.77, 'slam_deck', 1.0),
+    ]
+
+    gate_z = direct_tracking_gate_z(
+        terrain_nodes,
+        current_xy=(0.34, 0.35),
+        odom_z=0.34,
+    )
+
+    assert gate_z < 0.05
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (0.34, 0.35),
+        0.42,
+        current_z=gate_z,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_tracking_holds_high_deck_waypoint_until_physical_height_progress() -> None:
+    direct_path = [
+        TerrainNode(10, 6.20, 5.97, 1.20, 'slam_deck', 1.0),
+        TerrainNode(11, 6.24, 6.48, 1.24, 'slam_deck', 1.0),
+    ]
+
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (6.20, 5.96),
+        0.42,
+        current_z=0.80,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_high_surface_gate_does_not_prove_physical_height_progress() -> None:
+    direct_path = [
+        TerrainNode(10, -5.93, 3.62, 0.76, 'slam_deck', 1.0),
+        TerrainNode(11, -7.21, 3.33, 0.83, 'slam_step', 1.0),
+    ]
+    surface_gate_z = 0.76
+    physical_z = 0.36
+
+    progress_z = direct_tracking_progress_z(
+        direct_path,
+        current_index=0,
+        physical_z=physical_z,
+        surface_gate_z=surface_gate_z,
+    )
+
+    assert progress_z == physical_z
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-5.93, 3.62),
+        0.42,
+        current_z=progress_z,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_high_step_requires_physical_height_before_waypoint_progress() -> None:
+    direct_path = [
+        TerrainNode(10, -2.72, 0.63, 0.82, 'slam_step', 1.0),
+        TerrainNode(11, -2.10, 1.17, -0.02, 'slam_step', 1.0),
+    ]
+    surface_gate_z = 0.82
+    physical_z = 0.33
+
+    progress_z = direct_tracking_progress_z(
+        direct_path,
+        current_index=0,
+        physical_z=physical_z,
+        surface_gate_z=surface_gate_z,
+    )
+
+    assert progress_z == physical_z
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-2.72, 0.63),
+        0.42,
+        current_z=progress_z,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_tracking_lookahead_pushes_past_xy_reached_height_debt_step() -> None:
+    direct_path = [
+        TerrainNode(10, -3.93, 2.14, 0.52, 'slam_step', 1.0),
+        TerrainNode(11, -4.18, 2.10, 0.52, 'slam_step', 1.0),
+        TerrainNode(12, -4.55, 2.22, 0.58, 'slam_step', 1.0),
+    ]
+    planner = object.__new__(TerrainPctPlanner)
+    planner._direct_path = direct_path
+    planner._direct_target_index = 0
+    planner._direct_lookahead_dist = 0.45
+    planner._direct_waypoint_tolerance = 0.42
+    planner._direct_z_tolerance = 0.45
+
+    target = TerrainPctPlanner._direct_lookahead_target(
+        planner,
+        -3.93,
+        2.14,
+        0.26,
+    )
+
+    assert target.index == 12
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-3.93, 2.14),
+        0.42,
+        current_z=0.26,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_tracking_height_debt_lookahead_does_not_cross_surface_change() -> None:
+    direct_path = [
+        TerrainNode(10, -3.93, 2.14, 0.52, 'slam_step', 1.0),
+        TerrainNode(11, -4.25, 2.23, 0.58, 'slam_ramp', 1.0),
+        TerrainNode(12, -4.65, 2.36, 0.68, 'slam_ramp', 1.0),
+    ]
+    planner = object.__new__(TerrainPctPlanner)
+    planner._direct_path = direct_path
+    planner._direct_target_index = 0
+    planner._direct_lookahead_dist = 0.45
+    planner._direct_waypoint_tolerance = 0.42
+    planner._direct_z_tolerance = 0.45
+
+    target = TerrainPctPlanner._direct_lookahead_target(
+        planner,
+        -3.93,
+        2.14,
+        0.26,
+    )
+
+    assert target.index == 10
+
+
+def test_direct_tracking_height_debt_lookahead_prefers_forward_path_tangent() -> None:
+    direct_path = [
+        TerrainNode(10, -4.29, 3.35, 0.72, 'slam_step', 1.0),
+        TerrainNode(11, -4.12, 3.90, 0.73, 'slam_step', 1.0),
+        TerrainNode(12, -3.97, 4.46, 0.74, 'slam_step', 1.0),
+    ]
+    planner = object.__new__(TerrainPctPlanner)
+    planner._direct_path = direct_path
+    planner._direct_target_index = 0
+    planner._direct_lookahead_dist = 0.45
+    planner._direct_waypoint_tolerance = 0.42
+    planner._direct_z_tolerance = 0.45
+
+    target = TerrainPctPlanner._direct_lookahead_target(
+        planner,
+        -4.05,
+        3.70,
+        0.40,
+    )
+
+    assert target.index == 12
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-4.05, 3.70),
+        0.42,
+        current_z=0.40,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_tracking_height_debt_lookahead_ignores_following_zigzag() -> None:
+    direct_path = [
+        TerrainNode(10, -4.19, 4.16, 0.70, 'slam_step', 1.0),
+        TerrainNode(11, -3.95, 5.10, 0.86, 'slam_step', 1.0),
+        TerrainNode(12, -4.12, 4.70, 0.88, 'slam_step', 1.0),
+    ]
+    planner = object.__new__(TerrainPctPlanner)
+    planner._direct_path = direct_path
+    planner._direct_target_index = 0
+    planner._direct_lookahead_dist = 0.45
+    planner._direct_waypoint_tolerance = 0.42
+    planner._direct_z_tolerance = 0.45
+
+    target = TerrainPctPlanner._direct_lookahead_target(
+        planner,
+        -4.18,
+        4.64,
+        0.39,
+    )
+
+    assert target.index == 11
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-4.18, 4.64),
+        0.42,
+        current_z=0.39,
+        z_tolerance=0.45,
+    ) == 0
+
+
+def test_direct_tracking_skips_low_ramp_waypoint_after_height_progress() -> None:
+    direct_path = [
+        TerrainNode(10, -3.39, -0.97, 0.13, 'slam_ramp', 1.0),
+        TerrainNode(11, -3.41, -0.66, 0.19, 'slam_ramp', 1.0),
+        TerrainNode(12, -3.30, 0.10, 0.55, 'slam_step', 1.0),
+    ]
+
+    assert advance_direct_target_index(
+        direct_path,
+        0,
+        (-3.34, -1.43),
+        0.42,
+        current_z=0.48,
+        z_tolerance=0.45,
+    ) == 1
+
+
 def test_follow_path_keeps_nearby_ramp_nodes_for_safe_descent() -> None:
     path = [
         TerrainNode(0, -0.15, -0.06, 0.37, 'wide_access_ramp/link/collision', 1.0),
@@ -548,6 +1039,11 @@ def test_surface_speed_limit_uses_slope_label() -> None:
         slope_speed_limit=0.14,
         flat_speed_limit=0.22,
     ) == 0.22
+    assert _surface_speed_limit_for_label(
+        'ramp_upper_landing/link/collision',
+        slope_speed_limit=0.14,
+        flat_speed_limit=0.22,
+    ) == 0.22
 
 
 def test_surface_z_reference_uses_spawn_hint_until_robot_leaves_initial_area() -> None:
@@ -608,3 +1104,111 @@ def test_terrain_planner_cancels_previous_nav_goal_before_new_one() -> None:
     assert 'duplicate_goal_xy_tolerance' in source
     assert 'duplicate_goal_time_sec' in source
     assert 'terrain-guided navigation goal was rejected' in source
+
+
+def test_direct_tracking_diagnostics_log_target_robot_and_command_state() -> None:
+    source = (
+        _repo_root()
+        / 'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    ).read_text(encoding='utf-8')
+
+    assert "direct_diagnostics_period_sec" in source
+    assert "_maybe_log_direct_diagnostics(" in source
+    assert "direct tracking diagnostics: " in source
+    for field in (
+        "index=",
+        "target=(",
+        "robot=(",
+        "gate_z=",
+        "surface=",
+        "heading_error=",
+        "speed_limit=",
+        "cmd=(",
+    ):
+        assert field in source
+
+
+def test_direct_tracking_requires_final_goal_xy_for_off_graph_endpoint() -> None:
+    from airos_experiments import terrain_pct_planner as planner
+
+    endpoint = TerrainNode(10, 7.81, -9.55, 0.0, 'slam_floor', 1.0)
+    reaches_goal = getattr(planner, 'direct_tracking_reaches_goal', None)
+
+    assert reaches_goal is not None
+
+    assert not reaches_goal(
+        endpoint,
+        current_xy=(7.81, -9.55),
+        current_z=0.0,
+        final_goal_xy=(8.0, -9.0),
+        xy_tolerance=0.30,
+        z_tolerance=0.45,
+    )
+
+
+def test_direct_tracking_accepts_final_goal_xy_inside_tolerance() -> None:
+    from airos_experiments import terrain_pct_planner as planner
+
+    endpoint = TerrainNode(10, 1.88, -9.19, 0.0, 'slam_floor', 1.0)
+
+    assert planner.direct_tracking_reaches_goal(
+        endpoint,
+        current_xy=(1.88, -9.19),
+        current_z=0.0,
+        final_goal_xy=(1.9, -9.2),
+        xy_tolerance=0.30,
+        z_tolerance=0.45,
+    )
+
+
+def test_direct_tracking_control_separates_surface_gate_from_progress_z() -> None:
+    source = (
+        _repo_root()
+        / 'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    ).read_text(encoding='utf-8')
+
+    assert "gate_z = self._direct_gate_z(current_x, current_y, current_z)" in source
+    assert (
+        "progress_z = direct_tracking_progress_z("
+        in source
+    )
+    assert "self._advance_direct_target(current_x, current_y, progress_z)" in source
+    assert (
+        "target = self._direct_lookahead_target(current_x, current_y, progress_z)"
+        in source
+    )
+    assert "self._graph.nodes" in source
+    assert "self._terrain_graph" not in source
+
+
+def test_slam_rebuild_does_not_block_direct_control_executor() -> None:
+    source = (
+        _repo_root()
+        / 'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    ).read_text(encoding='utf-8')
+
+    assert "from concurrent.futures import Future, ThreadPoolExecutor" in source
+    assert "self._slam_rebuild_executor = ThreadPoolExecutor(" in source
+    assert "max_workers=1" in source
+    assert "self._slam_graph_future" in source
+    assert "_queue_slam_graph_rebuild" in source
+    assert "_apply_finished_slam_graph_rebuild" in source
+    assert "graph = build_slam_terrain_graph_from_pointcloud(" not in source.split(
+        "    def _rebuild_slam_graph("
+    )[1].split("    def _initial_pose_callback(")[0]
+    main_section = source.split("def main() -> None:")[1]
+    assert "MultiThreadedExecutor" in main_section
+    assert "rclpy.spin(node)" not in main_section
+
+
+def test_goal_callback_logs_received_and_duplicate_terrain_goals() -> None:
+    source = (
+        _repo_root()
+        / 'src/airos_experiments/airos_experiments/terrain_pct_planner.py'
+    ).read_text(encoding='utf-8')
+
+    assert "received terrain goal: " in source
+    assert "ignored duplicate terrain goal: " in source
+    assert source.index("ignored duplicate terrain goal: ") < source.index(
+        "path = plan_terrain_path("
+    )

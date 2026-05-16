@@ -1,5 +1,7 @@
 # AIROS 平面单层自主导航阶段执行计划
 
+> 状态：历史阶段计划。当前迁移前封板、真实下一步和交接入口见 `docs/handoff/README.md`。若本文与当前代码/测试或 `docs/handoff/` 不一致，以当前代码/测试和 `docs/handoff/` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to execute this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 构建一个可复现的 ROS 2 Humble + Gazebo Fortress + Go2W 风格导航等效体 + slam_toolbox + Nav2 自主导航演示系统。  

@@ -53,10 +53,10 @@
     </model>
     <model name="second_floor_deck">
       <static>true</static>
-      <pose>-4.800 6.400 0.860 0.0000 0.0000 0.0000</pose>
+      <pose>-4.800 9.400 0.860 0.0000 0.0000 0.0000</pose>
       <link name="link">
-        <collision name="collision"><geometry><box><size>13.500 12.000 0.160</size></box></geometry></collision>
-        <visual name="visual"><geometry><box><size>13.500 12.000 0.160</size></box></geometry><material><ambient>0.32 0.35 0.38 1</ambient><diffuse>0.32 0.35 0.38 1</diffuse></material></visual>
+        <collision name="collision"><geometry><box><size>13.500 6.000 0.160</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>13.500 6.000 0.160</size></box></geometry><material><ambient>0.32 0.35 0.38 1</ambient><diffuse>0.32 0.35 0.38 1</diffuse></material></visual>
       </link>
     </model>
     <model name="third_floor_deck">
@@ -85,7 +85,7 @@
     </model>
     <model name="lower_access_ramp">
       <static>true</static>
-      <pose>-4.700 -0.200 0.400 0.0000 -0.1450 1.5708</pose>
+      <pose>-4.700 -0.200 0.440 0.0000 -0.0678 1.5708</pose>
       <link name="link">
         <collision name="collision"><geometry><box><size>12.400 2.600 0.160</size></box></geometry></collision>
         <visual name="visual"><geometry><box><size>12.400 2.600 0.160</size></box></geometry><material><ambient>0.35 0.40 0.35 1</ambient><diffuse>0.35 0.40 0.35 1</diffuse></material></visual>
@@ -101,7 +101,7 @@
     </model>
     <model name="ramp_upper_landing">
       <static>true</static>
-      <pose>-4.700 5.900 0.860 0.0000 0.0000 0.0000</pose>
+      <pose>-4.700 6.700 0.860 0.0000 0.0000 0.0000</pose>
       <link name="link">
         <collision name="collision"><geometry><box><size>3.400 2.800 0.160</size></box></geometry></collision>
         <visual name="visual"><geometry><box><size>3.400 2.800 0.160</size></box></geometry><material><ambient>0.35 0.39 0.35 1</ambient><diffuse>0.35 0.39 0.35 1</diffuse></material></visual>

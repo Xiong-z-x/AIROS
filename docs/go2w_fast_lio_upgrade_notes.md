@@ -429,9 +429,9 @@ Implemented:
   `PointCloud2` data into a height-aware terrain graph, publishes
   `/terrain_traversability_cloud`, and uses that graph for `/pct_path`.
 - SLAM-cloud graph rebuilding is throttled by `slam_rebuild_period_sec`
-  instead of rebuilding every second. The default FAST-LIO visual launch now
-  samples up to 80k map points per rebuild, which keeps the planner responsive
-  enough for RViz goal testing in WSL.
+  instead of rebuilding every second. The current FAST-LIO visual launch samples
+  up to 180k map points per rebuild, which keeps more high-structure evidence
+  while still remaining usable for RViz goal testing in WSL.
 - SDF terrain planning and SLAM-cloud planning use different transition rules:
   SDF surfaces retain the explicit ramp-entry metadata, while SLAM-derived
   surfaces use slope/step limits because the point cloud has no SDF box
@@ -443,10 +443,10 @@ Implemented:
   connectivity.
 - The default SLAM-cloud planner uses `slam_min_cell_points:=2` to avoid
   fragmenting sparse FAST-LIO clouds into tiny disconnected cells.
-- The visual FAST-LIO planner launch uses `goal_z_policy:=adaptive` and
-  `goal_snap_max_distance:=1.0`, so same-level goals can fall back from an
-  unreachable high point to a reachable floor point, while targets outside the
-  current SLAM-map coverage are rejected instead of producing a false path.
+- The visual FAST-LIO planner launch currently uses `goal_z_policy:=highest`
+  and `goal_snap_max_distance:=2.0`, so reachable high-floor candidates inside
+  the SLAM graph are preferred without snapping a high request to a low-floor
+  false success.
 - If the final goal is not yet reachable in the current SLAM graph,
   `terrain_pct_planner` can publish a FAST-LIO exploration-frontier path inside
   the reachable component and keep the original final goal pending for later
@@ -458,9 +458,9 @@ Implemented:
   blindly moving along the final XY direction when the live map contains a
   lateral ramp or upper-deck hint.
 - FAST-LIO exploration-frontier paths are bounded by
-  `frontier_min_path_distance:=0.25` and `frontier_max_path_distance:=10.0` in the
-  default visual launch. This prevents the controller from chasing a far
-  frontier in one command before the live SLAM map has expanded.
+  `frontier_min_path_distance:=0.25` and `frontier_max_path_distance:=14.0` in the
+  current visual launch. This gives the frontier enough range to reach useful
+  ramp-entry regions while still bounding one-shot command targets.
 - Frontier planning fuses live obstacle points through
   `frontier_obstacle_scan_topic:=/slam_scan`,
   `frontier_obstacle_clearance:=0.45`, and
@@ -652,3 +652,32 @@ Remaining limitation:
   FAST-LIO2 SLAM map generation and high-floor PCT path generation have runtime
   evidence, but end-to-end motion acceptance has not passed because the robot
   still fails to physically climb from the low floor to the high deck.
+
+## 2026-05-15 Pre-Migration Update
+
+Active FAST-LIO/PCT launch defaults for the handoff state:
+
+- `terrain_map_source:=slam_cloud`
+- `goal_z_policy:=highest`
+- `slam_map_max_points:=180000`
+- `frontier_max_path_distance:=14.0`
+- `max_step_height:=0.50`
+- `direct_max_linear_speed:=0.30`
+- `flat_speed_limit:=0.32`
+- `slope_speed_limit:=0.16`
+
+Latest accepted runtime framing:
+
+- A live FAST-LIO2 run generated high `/pct_path` evidence:
+  `PATH_MAXZ_OVERALL=2.155`, with `/Laser_map_world` growing from 69075 to
+  594777 points.
+- The command and odometry chains were active in the same runtime:
+  `CMD_COUNT=797`, `CMD_NONZERO=796`, and odometry moved about `6.49 m`.
+- This accepts SLAM map -> traversability graph -> high `/pct_path` generation.
+  It does not accept physical high-deck arrival.
+
+Immediate next technical task:
+
+- Improve terrain-aware execution of the high path: ramp-entry approach,
+  3D waypoint gating, local slope direction selection, stall/replan logic, and
+  safety-chain interaction.

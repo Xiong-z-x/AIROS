@@ -46,6 +46,8 @@ setup(
             'fast_lio_localization_bridge = airos_experiments.fast_lio_localization_bridge:main',
             'generate_advanced_planner_candidates = '
             'airos_experiments.advanced_planner_candidate:main',
+            'cross_level_evidence_probe = '
+            'airos_experiments.cross_level_evidence_probe:main',
             'imu_republisher = airos_experiments.imu_republisher:main',
             'initial_pose_publisher = airos_experiments.initial_pose_publisher:main',
             'lifecycle_activator = airos_experiments.lifecycle_activator:main',
@@ -53,6 +55,7 @@ setup(
             'nav_chain_smoke_probe = airos_experiments.nav_chain_smoke_probe:main',
             'pointcloud_colorizer = airos_experiments.pointcloud_colorizer:main',
             'pointcloud_emulator = airos_experiments.pointcloud_emulator:main',
+            'publish_terrain_goal = airos_experiments.terrain_goal_publisher:main',
             'rviz2_safe = airos_experiments.rviz2_safe:main',
             'verify_route_graph = airos_experiments.route_graph_verifier:main',
             'run_clean_nav_batch = airos_experiments.clean_batch_runner:main',

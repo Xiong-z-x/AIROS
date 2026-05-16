@@ -49,11 +49,37 @@ def test_nav_launch_can_run_controller_only_for_pct_execution() -> None:
     assert "condition=IfCondition(_full_stack_enabled(nav_stack_mode))" in launch_text
 
 
+def test_lifecycle_activator_retries_service_availability() -> None:
+    source = _read_text(
+        'src/airos_experiments/airos_experiments/lifecycle_activator.py'
+    )
+
+    activate_node = source.split('    def _activate_node(')[1].split(
+        '    def _wait_for_lifecycle_services('
+    )[0]
+    wait_helper = source.split('    def _wait_for_lifecycle_services(')[1].split(
+        '    def _get_state('
+    )[0]
+
+    assert '_wait_for_lifecycle_services(' in activate_node
+    assert 'for _ in range(max(self._attempts, 1)):' in wait_helper
+    assert 'get_state.wait_for_service' in wait_helper
+    assert 'change_state.wait_for_service' in wait_helper
+    assert 'return True' in wait_helper
+
+
 def test_cleanup_script_stops_fast_lio_scan_projector() -> None:
     cleanup_script = _read_text('scripts/cleanup_airos_runtime.sh')
 
     assert "'slam_scan_projector'" in cleanup_script
     assert 'slam_scan_projector' in cleanup_script.split("leftover_pattern=")[1]
+
+
+def test_cleanup_script_stops_nav2_map_saver_leftovers() -> None:
+    cleanup_script = _read_text('scripts/cleanup_airos_runtime.sh')
+
+    assert "'nav2_map_server/map_saver_server'" in cleanup_script
+    assert 'nav2_' in cleanup_script.split("leftover_pattern=")[1]
 
 
 def test_cleanup_script_does_not_kill_its_calling_shell_by_pattern() -> None:
@@ -62,6 +88,36 @@ def test_cleanup_script_does_not_kill_its_calling_shell_by_pattern() -> None:
     assert 'protected_pids' in cleanup_script
     assert 'pgrep -af "$pattern"' in cleanup_script
     assert 'pkill -f' not in cleanup_script
+
+
+def test_fast_lio_single_floor_demo_script_uses_physical_odom_acceptance() -> None:
+    demo_script = _read_text('scripts/run_fast_lio_single_floor_demo.sh')
+
+    assert 'cleanup_airos_runtime.sh' in demo_script
+    assert 'DEMO_TARGET="${DEMO_TARGET:-near_goal}"' in demo_script
+    assert 'near_goal)' in demo_script
+    assert 'long_corridor)' in demo_script
+    assert 'GOAL_X="${GOAL_X:-1.9}"' in demo_script
+    assert 'GOAL_X="${GOAL_X:-8.0}"' in demo_script
+    assert 'GOAL_Y="${GOAL_Y:--9.0}"' in demo_script
+    assert 'visual_fast_lio_navigation.launch.py' in demo_script
+    assert 'terrain_goal_z_policy:=nearest_z' in demo_script
+    assert 'terrain_goal_min_z:=-1.0' in demo_script
+    assert 'TERRAIN_GOAL_MAX_Z="${TERRAIN_GOAL_MAX_Z:-0.45}"' in demo_script
+    assert 'terrain_goal_max_z:="$TERRAIN_GOAL_MAX_Z"' in demo_script
+    assert 'terrain_odom_topic:=/odom' in demo_script
+    assert 'cross_level_evidence_probe' in demo_script
+    assert '--times "$GOAL_PUBLISH_COUNT"' in demo_script
+    assert '--rate "$GOAL_PUBLISH_RATE_HZ"' in demo_script
+    assert 'wheel_goal_xy_distance' in demo_script
+    assert 'gazebo_goal_xy_distance' in demo_script
+    assert 'planner_received_goal' in demo_script
+    assert 'planner_started_direct_tracking' in demo_script
+    assert 'planner_reached_goal' in demo_script
+    assert 'direct_diagnostics_seen' in demo_script
+    assert 'ACCEPTANCE_TOLERANCE_M' in demo_script
+    assert 'MAX_LOG_RUNS_TO_KEEP' in demo_script
+    assert 'rm -rf --' in demo_script
 
 
 def test_gazebo_bridge_does_not_accept_direct_cmd_vel() -> None:
@@ -91,12 +147,12 @@ def test_base_controller_limits_match_nav2_safe_chain() -> None:
     assert '<xacro:property name="body_mass" value="14.0"/>' in robot_model
     assert '<mu1>3.0</mu1>' in robot_model
     assert '<mu2>3.0</mu2>' in robot_model
-    assert diff_drive['linear']['x']['max_velocity'] <= 0.18
+    assert 0.30 <= diff_drive['linear']['x']['max_velocity'] <= 0.32
     assert diff_drive['linear']['x']['min_velocity'] >= 0.0
-    assert diff_drive['linear']['x']['max_acceleration'] <= 0.12
-    assert diff_drive['angular']['z']['max_velocity'] <= 0.40
-    assert diff_drive['angular']['z']['min_velocity'] >= -0.40
-    assert diff_drive['angular']['z']['max_acceleration'] <= 0.35
+    assert 0.20 <= diff_drive['linear']['x']['max_acceleration'] <= 0.22
+    assert 0.50 <= diff_drive['angular']['z']['max_velocity'] <= 0.55
+    assert diff_drive['angular']['z']['min_velocity'] >= -0.55
+    assert 0.50 <= diff_drive['angular']['z']['max_acceleration'] <= 0.55
 
 
 def test_sim_odom_is_gazebo_truth_not_wheel_integrator() -> None:
@@ -157,7 +213,7 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
         'nav2_regulated_pure_pursuit_controller::'
         'RegulatedPurePursuitController'
     )
-    assert follow_path['desired_linear_vel'] <= 0.18
+    assert 0.22 <= follow_path['desired_linear_vel'] <= 0.24
     assert follow_path['use_rotate_to_heading'] is False
     assert follow_path['allow_reversing'] is False
     assert 0.55 <= follow_path['angular_dist_threshold'] <= 0.9
@@ -165,9 +221,9 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
         0.25 <= follow_path['angular_disengage_threshold']
         < follow_path['angular_dist_threshold']
     )
-    assert smoother['max_velocity'][0] <= 0.18
+    assert 0.30 <= smoother['max_velocity'][0] <= 0.32
     assert smoother['min_velocity'][0] >= 0.0
-    assert smoother['max_accel'][0] <= 0.12
+    assert 0.20 <= smoother['max_accel'][0] <= 0.22
     assert 0.12 <= progress_checker['required_movement_radius'] <= 0.25
     assert progress_checker['movement_time_allowance'] >= 18.0
     assert follow_path['use_collision_detection'] is False

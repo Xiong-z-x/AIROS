@@ -37,16 +37,16 @@ diff_drive_controller:
     linear:
       x:
         has_velocity_limits: true
-        max_velocity: 0.18
+        max_velocity: 0.32
         min_velocity: 0.0
         has_acceleration_limits: true
-        max_acceleration: 0.12
-        min_acceleration: -0.22
+        max_acceleration: 0.22
+        min_acceleration: -0.35
     angular:
       z:
         has_velocity_limits: true
-        max_velocity: 0.40
-        min_velocity: -0.40
+        max_velocity: 0.55
+        min_velocity: -0.55
         has_acceleration_limits: true
-        max_acceleration: 0.35
-        min_acceleration: -0.45
+        max_acceleration: 0.55
+        min_acceleration: -0.65

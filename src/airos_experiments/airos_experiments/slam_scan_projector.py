@@ -17,6 +17,9 @@ from airos_experiments.scan_emulator import _yaw_from_quaternion
 from airos_experiments.slam_traversability_graph import sample_xyz_points
 
 
+_SUPPORT_BIN_SIZE = 0.45
+
+
 def project_cloud_to_scan(
     cloud: PointCloud2,
     odom: Odometry,
@@ -61,6 +64,7 @@ def project_cloud_to_scan(
     sin_yaw = math.sin(-base_yaw)
 
     points = list(sample_xyz_points(cloud, max_points=max_points))
+    support_bins = _build_lower_support_bins(points)
     base_z = _estimate_local_surface_z(
         points,
         base_x=base_x,
@@ -73,6 +77,14 @@ def project_cloud_to_scan(
     for x, y, z in points:
         relative_z = z - base_z
         if relative_z < min_z or relative_z > max_z:
+            continue
+        if _is_supported_ramp_surface_point(
+            points,
+            point=(x, y, z),
+            base_z=base_z,
+            min_z=min_z,
+            support_bins=support_bins,
+        ):
             continue
         dx = x - base_x
         dy = y - base_y
@@ -90,6 +102,58 @@ def project_cloud_to_scan(
 
     scan.ranges = ranges
     return scan
+
+
+def _build_lower_support_bins(
+    points: list[tuple[float, float, float]],
+    *,
+    cell_size: float = _SUPPORT_BIN_SIZE,
+) -> dict[tuple[int, int], list[tuple[float, float, float]]]:
+    if cell_size <= 0.0:
+        return {}
+    bins: dict[tuple[int, int], list[tuple[float, float, float]]] = {}
+    for x, y, z in points:
+        key = (math.floor(x / cell_size), math.floor(y / cell_size))
+        bins.setdefault(key, []).append((x, y, z))
+    return bins
+
+
+def _is_supported_ramp_surface_point(
+    points: list[tuple[float, float, float]],
+    *,
+    point: tuple[float, float, float],
+    base_z: float,
+    min_z: float,
+    support_bins: dict[tuple[int, int], list[tuple[float, float, float]]] | None = None,
+    cell_size: float = _SUPPORT_BIN_SIZE,
+) -> bool:
+    x, y, z = point
+    if z - base_z < min_z:
+        return False
+    if support_bins is None:
+        support_bins = _build_lower_support_bins(points, cell_size=cell_size)
+    cell_x = math.floor(x / cell_size)
+    cell_y = math.floor(y / cell_size)
+    radius_cells = max(1, int(math.ceil(0.90 / cell_size)))
+    support_count = 0
+    for dx in range(-radius_cells, radius_cells + 1):
+        for dy in range(-radius_cells, radius_cells + 1):
+            for other_x, other_y, other_z in support_bins.get(
+                (cell_x + dx, cell_y + dy),
+                [],
+            ):
+                if other_z >= z - 0.05:
+                    continue
+                horizontal = math.hypot(x - other_x, y - other_y)
+                if horizontal < 0.20 or horizontal > 0.90:
+                    continue
+                dz = z - other_z
+                grade = dz / max(horizontal, 1e-6)
+                if 0.05 <= grade <= 0.45:
+                    support_count += 1
+                    if support_count >= 2:
+                        return True
+    return False
 
 
 def _estimate_local_surface_z(

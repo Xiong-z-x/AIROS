@@ -563,6 +563,104 @@ def _add_sparse_slope_bridges(
                 continue
             adjacency[node.index].append((other.index, bridge_cost))
             adjacency[other.index].append((node.index, bridge_cost))
+    _add_component_sparse_step_bridges(
+        adjacency,
+        nodes,
+        bins,
+        grid_resolution=grid_resolution,
+        max_slope_grade=max_slope_grade,
+        max_surface_transition_height=max_surface_transition_height,
+        obstacle_bins=obstacle_bins,
+        obstacle_clearance=obstacle_clearance,
+        search_radius=max(sparse_radius, grid_resolution * 14.0),
+    )
+
+
+def _add_component_sparse_step_bridges(
+    adjacency: list[list[tuple[int, float]]],
+    nodes: list[SlamTerrainNode],
+    bins: dict[tuple[int, int], list[int]],
+    *,
+    grid_resolution: float,
+    max_slope_grade: float,
+    max_surface_transition_height: float,
+    obstacle_bins: dict[tuple[int, int], tuple[float, float]],
+    obstacle_clearance: float,
+    search_radius: float,
+) -> None:
+    component_ids = _adjacency_component_ids(adjacency)
+    best_pairs: dict[tuple[int, int], tuple[float, int, int]] = {}
+    for node in nodes:
+        if node.label == TraversabilityLabel.FLOOR:
+            continue
+        for other in _neighbor_nodes(
+            node,
+            nodes,
+            bins,
+            grid_resolution,
+            search_radius,
+        ):
+            if other.index <= node.index or other.label == TraversabilityLabel.FLOOR:
+                continue
+            first_component = component_ids[node.index]
+            second_component = component_ids[other.index]
+            if first_component == second_component:
+                continue
+            horizontal = math.hypot(other.x - node.x, other.y - node.y)
+            if horizontal < grid_resolution * 3.0:
+                continue
+            dz = abs(other.z - node.z)
+            grade = dz / max(horizontal, 1e-6)
+            if grade > max_slope_grade:
+                continue
+            if not _sparse_bridge_uses_vertical_structure(
+                node,
+                other,
+                min_vertical_change=max(0.06, max_surface_transition_height * 0.25),
+            ):
+                continue
+            component_key = tuple(sorted((first_component, second_component)))
+            score = math.sqrt(horizontal * horizontal + dz * dz)
+            previous = best_pairs.get(component_key)
+            if previous is None or score < previous[0]:
+                best_pairs[component_key] = (score, node.index, other.index)
+    for _, first_index, second_index in sorted(best_pairs.values()):
+        if _has_edge(adjacency[first_index], second_index):
+            continue
+        bridge_cost = _sparse_slope_bridge_cost(
+            nodes[first_index],
+            nodes[second_index],
+            grid_resolution=grid_resolution,
+            max_slope_grade=max_slope_grade,
+            max_surface_transition_height=max_surface_transition_height,
+            obstacle_bins=obstacle_bins,
+            obstacle_clearance=obstacle_clearance,
+        )
+        if bridge_cost is None:
+            continue
+        adjacency[first_index].append((second_index, bridge_cost))
+        adjacency[second_index].append((first_index, bridge_cost))
+
+
+def _adjacency_component_ids(
+    adjacency: list[list[tuple[int, float]]],
+) -> list[int]:
+    component_ids = [-1] * len(adjacency)
+    component_id = 0
+    for start in range(len(adjacency)):
+        if component_ids[start] >= 0:
+            continue
+        stack = [start]
+        component_ids[start] = component_id
+        while stack:
+            current = stack.pop()
+            for neighbor, _ in adjacency[current]:
+                if component_ids[neighbor] >= 0:
+                    continue
+                component_ids[neighbor] = component_id
+                stack.append(neighbor)
+        component_id += 1
+    return component_ids
 
 
 def _sparse_slope_bridge_cost(
@@ -611,6 +709,11 @@ def _sparse_bridge_uses_vertical_structure(
     *,
     min_vertical_change: float,
 ) -> bool:
+    if (
+        (node.label == TraversabilityLabel.FLOOR or other.label == TraversabilityLabel.FLOOR)
+        and abs(other.z - node.z) > max(min_vertical_change, 0.20)
+    ):
+        return False
     if abs(other.z - node.z) >= min_vertical_change:
         return True
     if min(node.z, other.z) < 0.45:
