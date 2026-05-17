@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import math
 import random
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -47,9 +48,17 @@ class PlannerResult:
 @dataclass
 class _PendingRun:
     start_time: float
-    local_results: list[PlannerResult]
+    local_results: dict[str, PlannerResult]
     nav2_results: dict[str, PlannerResult]
     map_frame: str
+
+
+@dataclass
+class _PathAnimation:
+    points: list[WorldPoint]
+    frame_id: str
+    visible_count: int
+    points_per_tick: int
 
 
 @dataclass
@@ -183,6 +192,10 @@ class PlannerComparisonNode(Node):
         self.declare_parameter('rrt_goal_sample_rate', 0.12)
         self.declare_parameter('rrt_rewire_radius_m', 1.4)
         self.declare_parameter('random_seed', 7)
+        self.declare_parameter('animate_paths', True)
+        self.declare_parameter('path_animation_rate_hz', 14.0)
+        self.declare_parameter('path_animation_spacing_m', 0.12)
+        self.declare_parameter('path_animation_points_per_tick', 3)
 
         self._map: GridMap | None = None
         self._tf_buffer = Buffer()
@@ -194,6 +207,10 @@ class PlannerComparisonNode(Node):
         )
         self._pending_runs: dict[int, _PendingRun] = {}
         self._run_id = 0
+        self._active_run_id = 0
+        self._pending_lock = threading.Lock()
+        self._animation_lock = threading.Lock()
+        self._path_animations: dict[str, _PathAnimation] = {}
 
         transient_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -236,6 +253,11 @@ class PlannerComparisonNode(Node):
             '/planner_compare/metrics_summary',
             path_qos,
         )
+        animation_rate_hz = max(
+            1.0,
+            float(self.get_parameter('path_animation_rate_hz').value),
+        )
+        self.create_timer(1.0 / animation_rate_hz, self._animation_tick)
 
         self.get_logger().info(
             'planner comparison ready: waits for /map and RViz goal_pose; '
@@ -264,10 +286,12 @@ class PlannerComparisonNode(Node):
             return
 
         map_frame = str(self.get_parameter('global_frame').value)
-        if goal.header.frame_id and goal.header.frame_id != map_frame:
+        try:
+            goal = self._goal_in_map_frame(goal, map_frame)
+        except TransformException as exc:
             self.get_logger().warning(
-                f'goal frame {goal.header.frame_id!r} is not {map_frame!r}; '
-                'ignoring to avoid unsafe path comparison'
+                f'ignored goal: cannot transform frame {goal.header.frame_id!r} '
+                f'to {map_frame!r}: {exc}'
             )
             return
 
@@ -278,28 +302,28 @@ class PlannerComparisonNode(Node):
         )
         start_point = (start.pose.position.x, start.pose.position.y)
         goal_point = (goal.pose.position.x, goal.pose.position.y)
-        results = [
-            self._plan_smac_fallback(start_point, goal_point),
-            self._plan_q_learning(start_point, goal_point),
-            self._plan_rrt_star(start_point, goal_point),
-        ]
-        for result, key in zip(results, ('smac', 'q_learning', 'rrt_star')):
-            self._path_publishers[key].publish(
-                _path_msg(result.path, map_frame, self.get_clock().now().to_msg())
-            )
 
         self._run_id += 1
         run_id = self._run_id
-        self._pending_runs[run_id] = _PendingRun(
-            start_time=time.perf_counter(),
-            local_results=results,
-            nav2_results={},
-            map_frame=map_frame,
-        )
+        self._active_run_id = run_id
+        with self._pending_lock:
+            self._pending_runs.clear()
+            self._pending_runs[run_id] = _PendingRun(
+                start_time=time.perf_counter(),
+                local_results={},
+                nav2_results={},
+                map_frame=map_frame,
+            )
+        self._clear_planner_paths(map_frame)
         for planner_id, display_name, key in (
             ('ThetaStar', 'Theta*', 'theta_star'),
         ):
             self._send_nav2_plan(run_id, planner_id, display_name, key, start, goal)
+        threading.Thread(
+            target=self._plan_local_paths_async,
+            args=(run_id, start_point, goal_point, map_frame),
+            daemon=True,
+        ).start()
 
     def _lookup_start_pose(self) -> PoseStamped:
         target_frame = str(self.get_parameter('global_frame').value)
@@ -319,6 +343,42 @@ class PlannerComparisonNode(Node):
         pose.pose.orientation.w = 1.0
         return pose
 
+    def _goal_in_map_frame(self, goal: PoseStamped, map_frame: str) -> PoseStamped:
+        source_frame = goal.header.frame_id or map_frame
+        if source_frame == map_frame:
+            goal.header.frame_id = map_frame
+            return goal
+
+        transform = self._tf_buffer.lookup_transform(
+            map_frame,
+            source_frame,
+            rclpy.time.Time(),
+            timeout=Duration(seconds=0.5),
+        )
+        yaw = _yaw_from_quaternion_xyzw(
+            transform.transform.rotation.x,
+            transform.transform.rotation.y,
+            transform.transform.rotation.z,
+            transform.transform.rotation.w,
+        )
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        x = goal.pose.position.x
+        y = goal.pose.position.y
+
+        transformed = PoseStamped()
+        transformed.header.frame_id = map_frame
+        transformed.header.stamp = self.get_clock().now().to_msg()
+        transformed.pose.position.x = (
+            transform.transform.translation.x + cos_yaw * x - sin_yaw * y
+        )
+        transformed.pose.position.y = (
+            transform.transform.translation.y + sin_yaw * x + cos_yaw * y
+        )
+        transformed.pose.position.z = goal.pose.position.z
+        transformed.pose.orientation = goal.pose.orientation
+        return transformed
+
     def _send_nav2_plan(
         self,
         run_id: int,
@@ -329,7 +389,7 @@ class PlannerComparisonNode(Node):
         goal: PoseStamped,
     ) -> None:
         start_time = time.perf_counter()
-        if not self._planner_client.wait_for_server(timeout_sec=1.0):
+        if not self._planner_client.wait_for_server(timeout_sec=0.25):
             self._finish_nav2_plan(run_id, path_key, PlannerResult(
                 planner_id=planner_id,
                 display_name=display_name,
@@ -425,27 +485,113 @@ class PlannerComparisonNode(Node):
             message='ok' if len(path) >= 2 else 'empty path',
         ))
 
+    def _plan_local_paths_async(
+        self,
+        run_id: int,
+        start_point: WorldPoint,
+        goal_point: WorldPoint,
+        map_frame: str,
+    ) -> None:
+        results = {
+            'smac': self._plan_smac_fallback(start_point, goal_point),
+            'q_learning': self._plan_q_learning(start_point, goal_point),
+            'rrt_star': self._plan_rrt_star(start_point, goal_point),
+        }
+        with self._pending_lock:
+            run = self._pending_runs.get(run_id)
+            if run is None or run_id != self._active_run_id:
+                return
+            run.local_results.update(results)
+        for key in ('smac', 'q_learning', 'rrt_star'):
+            self._start_path_animation(key, results[key].path, map_frame)
+        self._maybe_publish_metrics(run_id)
+
     def _finish_nav2_plan(
         self,
         run_id: int,
         path_key: str,
         result: PlannerResult,
     ) -> None:
-        run = self._pending_runs.get(run_id)
-        if run is None:
-            return
-        run.nav2_results[path_key] = result
-        if path_key != 'smac' or result.success:
-            self._path_publishers[path_key].publish(
-                _path_msg(result.path, run.map_frame, self.get_clock().now().to_msg())
-            )
-        if {'theta_star'} <= set(run.nav2_results):
+        with self._pending_lock:
+            run = self._pending_runs.get(run_id)
+            if run is None or run_id != self._active_run_id:
+                return
+            run.nav2_results[path_key] = result
+            map_frame = run.map_frame
+        self._start_path_animation(path_key, result.path, map_frame)
+        self._maybe_publish_metrics(run_id)
+
+    def _maybe_publish_metrics(self, run_id: int) -> None:
+        with self._pending_lock:
+            run = self._pending_runs.get(run_id)
+            if run is None:
+                return
+            if 'theta_star' not in run.nav2_results:
+                return
+            if not {'smac', 'q_learning', 'rrt_star'} <= set(run.local_results):
+                return
             ordered = [
                 run.nav2_results['theta_star'],
-                *run.local_results,
+                run.local_results['smac'],
+                run.local_results['q_learning'],
+                run.local_results['rrt_star'],
             ]
-            self._publish_metrics(ordered)
             self._pending_runs.pop(run_id, None)
+        self._publish_metrics(ordered)
+
+    def _clear_planner_paths(self, map_frame: str) -> None:
+        with self._animation_lock:
+            self._path_animations.clear()
+        stamp = self.get_clock().now().to_msg()
+        for publisher in self._path_publishers.values():
+            publisher.publish(_path_msg([], map_frame, stamp))
+
+    def _start_path_animation(
+        self,
+        path_key: str,
+        points: list[WorldPoint],
+        frame_id: str,
+    ) -> None:
+        stamp = self.get_clock().now().to_msg()
+        if len(points) < 2:
+            self._path_publishers[path_key].publish(_path_msg([], frame_id, stamp))
+            return
+        if not bool(self.get_parameter('animate_paths').value):
+            self._path_publishers[path_key].publish(_path_msg(points, frame_id, stamp))
+            return
+
+        spacing = max(0.03, float(self.get_parameter('path_animation_spacing_m').value))
+        dense_points = _densify_path(points, spacing)
+        points_per_tick = max(
+            1,
+            int(self.get_parameter('path_animation_points_per_tick').value),
+        )
+        with self._animation_lock:
+            self._path_animations[path_key] = _PathAnimation(
+                points=dense_points,
+                frame_id=frame_id,
+                visible_count=1,
+                points_per_tick=points_per_tick,
+            )
+
+    def _animation_tick(self) -> None:
+        updates: list[tuple[str, list[WorldPoint], str]] = []
+        with self._animation_lock:
+            for path_key, animation in list(self._path_animations.items()):
+                animation.visible_count = min(
+                    len(animation.points),
+                    animation.visible_count + animation.points_per_tick,
+                )
+                updates.append((
+                    path_key,
+                    animation.points[: animation.visible_count],
+                    animation.frame_id,
+                ))
+                if animation.visible_count >= len(animation.points):
+                    self._path_animations.pop(path_key, None)
+        stamp = self.get_clock().now().to_msg()
+        for path_key, points, frame_id in updates:
+            self._path_publishers[path_key].publish(_path_msg(points, frame_id, stamp))
 
     def _plan_smac_fallback(self, start: WorldPoint, goal: WorldPoint) -> PlannerResult:
         if self._map is None:
@@ -939,6 +1085,28 @@ def _path_msg(points: list[WorldPoint], frame_id: str, stamp) -> Path:
         pose.pose.orientation.w = 1.0
         path.poses.append(pose)
     return path
+
+
+def _densify_path(points: list[WorldPoint], spacing_m: float) -> list[WorldPoint]:
+    if len(points) < 2:
+        return points
+    dense: list[WorldPoint] = [points[0]]
+    for start, end in zip(points, points[1:]):
+        distance = _distance(start, end)
+        steps = max(1, int(math.ceil(distance / spacing_m)))
+        for index in range(1, steps + 1):
+            ratio = index / steps
+            dense.append((
+                start[0] + (end[0] - start[0]) * ratio,
+                start[1] + (end[1] - start[1]) * ratio,
+            ))
+    return dense
+
+
+def _yaw_from_quaternion_xyzw(x: float, y: float, z: float, w: float) -> float:
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(siny_cosp, cosy_cosp)
 
 
 def _distance(a: WorldPoint, b: WorldPoint) -> float:

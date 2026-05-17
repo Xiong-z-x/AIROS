@@ -332,6 +332,87 @@
       </link>
     </model>
 
+    <model name="central_office_table_1">
+      <static>true</static>
+      <pose>-4.2 -1.25 0.42 0 0 0.38</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.45 0.70 0.84</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.45 0.70 0.84</size></box></geometry><material><ambient>0.54 0.39 0.26 1</ambient><diffuse>0.54 0.39 0.26 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_office_table_2">
+      <static>true</static>
+      <pose>4.25 1.25 0.42 0 0 -0.44</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.45 0.70 0.84</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.45 0.70 0.84</size></box></geometry><material><ambient>0.50 0.36 0.25 1</ambient><diffuse>0.50 0.36 0.25 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_bookshelf_1">
+      <static>true</static>
+      <pose>-4.65 2.15 0.95 0 0 1.5708</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.20 0.38 1.9</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.20 0.38 1.9</size></box></geometry><material><ambient>0.40 0.45 0.50 1</ambient><diffuse>0.40 0.45 0.50 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_bookshelf_2">
+      <static>true</static>
+      <pose>4.65 -2.15 0.95 0 0 0.05</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>1.20 0.38 1.9</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>1.20 0.38 1.9</size></box></geometry><material><ambient>0.36 0.44 0.52 1</ambient><diffuse>0.36 0.44 0.52 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_conference_chair_1">
+      <static>true</static>
+      <pose>-2.25 1.45 0.34 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.24</radius><length>0.68</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.24</radius><length>0.68</length></cylinder></geometry><material><ambient>0.16 0.22 0.30 1</ambient><diffuse>0.16 0.22 0.30 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_conference_chair_2">
+      <static>true</static>
+      <pose>2.25 -1.45 0.34 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.24</radius><length>0.68</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.24</radius><length>0.68</length></cylinder></geometry><material><ambient>0.16 0.22 0.30 1</ambient><diffuse>0.16 0.22 0.30 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_static_person_1">
+      <static>true</static>
+      <pose>-5.85 0.10 0.85 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.26</radius><length>1.7</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.26</radius><length>1.7</length></cylinder></geometry><material><ambient>0.70 0.28 0.22 1</ambient><diffuse>0.70 0.28 0.22 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_static_person_2">
+      <static>true</static>
+      <pose>5.85 -0.10 0.85 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.26</radius><length>1.7</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.26</radius><length>1.7</length></cylinder></geometry><material><ambient>0.70 0.28 0.22 1</ambient><diffuse>0.70 0.28 0.22 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_service_cart">
+      <static>true</static>
+      <pose>-1.70 2.35 0.45 0 0 -0.62</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.82 0.55 0.9</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.82 0.55 0.9</size></box></geometry><material><ambient>0.68 0.45 0.22 1</ambient><diffuse>0.68 0.45 0.22 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="central_low_partition">
+      <static>true</static>
+      <pose>1.70 -2.35 0.60 0 0 1.5708</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.95 0.22 1.2</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.95 0.22 1.2</size></box></geometry><material><ambient>0.42 0.50 0.54 1</ambient><diffuse>0.42 0.50 0.54 1</diffuse></material></visual>
+      </link>
+    </model>
+
     <model name="column_south_west">
       <static>true</static>
       <pose>-5.5 -8.8 0.95 0 0 0</pose>

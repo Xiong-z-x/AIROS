@@ -87,6 +87,56 @@ def generate_launch_description():
             'rrt_goal_sample_rate': 0.12,
             'rrt_rewire_radius_m': 1.4,
             'random_seed': 7,
+            'animate_paths': True,
+            'path_animation_rate_hz': 14.0,
+            'path_animation_spacing_m': 0.12,
+            'path_animation_points_per_tick': 3,
+        }],
+    )
+
+    dense_world_cloud = Node(
+        package='airos_experiments',
+        executable='pointcloud_emulator',
+        name='planner_showcase_dense_world_cloud',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'world_file': os.path.join(
+                pkg_sim,
+                'worlds',
+                'single_floor_planner_showcase_static.sdf',
+            ),
+            'odom_topic': '/odom',
+            'lidar_topic': '/planner_showcase/livox_points_local',
+            'registered_cloud_topic': '/planner_showcase/dense_world_cloud',
+            'map_cloud_topic': '/planner_showcase/dense_map_cloud',
+            'publish_registered_cloud': True,
+            'publish_map_cloud': True,
+            'world_frame': 'map',
+            'lidar_frame': 'livox_frame',
+            'use_initial_pose_anchor': False,
+            'point_spacing': 0.08,
+            'range_max': 40.0,
+            'publish_rate_hz': 1.0,
+            'map_publish_rate_hz': 0.5,
+            'max_live_points': 220000,
+            'include_dynamic_models': False,
+        }],
+    )
+
+    dense_cloud_colorizer = Node(
+        package='airos_experiments',
+        executable='pointcloud_colorizer',
+        name='planner_showcase_cloud_colorizer',
+        output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'input_topic': '/planner_showcase/dense_map_cloud',
+            'output_topic': '/Laser_map_colored',
+            'min_z': -0.40,
+            'max_z': 2.20,
+            'min_visible_z': 0.06,
+            'max_points': 900000,
         }],
     )
 
@@ -122,6 +172,8 @@ def generate_launch_description():
         DeclareLaunchArgument('log_level', default_value='warn'),
         sim,
         TimerAction(period=5.0, actions=[nav]),
+        TimerAction(period=9.0, actions=[dense_world_cloud]),
+        TimerAction(period=10.0, actions=[dense_cloud_colorizer]),
         TimerAction(period=16.0, actions=[planner_compare]),
         TimerAction(period=18.0, actions=[rviz]),
     ])
