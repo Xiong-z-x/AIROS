@@ -98,7 +98,7 @@ Visualization Manager:
     Color: 255; 255; 255
     Color Transformer: RGB8
     Decay Time: 0
-    Enabled: false
+    Enabled: true
     Name: Colorized PointCloud Map /Laser_map_colored
     Position Transformer: XYZ
     Selectable: true
@@ -112,7 +112,7 @@ Visualization Manager:
       Reliability Policy: Best Effort
       Value: /Laser_map_colored
     Use Fixed Frame: true
-    Value: false
+    Value: true
   - Alpha: 0.65
     Autocompute Intensity Bounds: true
     Autocompute Value Bounds:
