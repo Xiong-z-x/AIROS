@@ -12,6 +12,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', [
             'launch/dynamic_obstacles.launch.py',
+            'launch/planner_comparison.launch.py',
             'launch/visual_fast_lio_navigation.launch.py',
             'launch/visual_slam_mapping.launch.py',
             'launch/visual_navigation.launch.py',
@@ -55,6 +56,8 @@ setup(
             'nav_chain_smoke_probe = airos_experiments.nav_chain_smoke_probe:main',
             'pointcloud_colorizer = airos_experiments.pointcloud_colorizer:main',
             'pointcloud_emulator = airos_experiments.pointcloud_emulator:main',
+            'planner_comparison_node = '
+            'airos_experiments.planner_comparison_node:main',
             'publish_terrain_goal = airos_experiments.terrain_goal_publisher:main',
             'rviz2_safe = airos_experiments.rviz2_safe:main',
             'verify_route_graph = airos_experiments.route_graph_verifier:main',

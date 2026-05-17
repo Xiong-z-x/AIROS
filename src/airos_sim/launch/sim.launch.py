@@ -85,11 +85,13 @@ def _launch_setup(context, *args, **kwargs):
     world_files = {
         'single_floor_lab': 'single_floor_lab.sdf',
         'single_floor_complex_large': 'single_floor_complex_large.sdf',
+        'single_floor_planner_showcase': 'single_floor_planner_showcase.sdf',
         'advanced_indoor_ramp': 'advanced_indoor_ramp.sdf',
         'realistic_multilevel_ramp': 'realistic_multilevel_ramp.sdf',
         'large_multilevel_complex': 'large_multilevel_complex.sdf',
     }
     static_world_files = {
+        'single_floor_planner_showcase': 'single_floor_planner_showcase_static.sdf',
         'advanced_indoor_ramp': 'advanced_indoor_ramp_static.sdf',
         'realistic_multilevel_ramp': 'realistic_multilevel_ramp_static.sdf',
         'large_multilevel_complex': 'large_multilevel_complex_static.sdf',

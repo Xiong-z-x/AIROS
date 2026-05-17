@@ -55,6 +55,10 @@ def _full_stack_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression
     return PythonExpression(["'", nav_stack_mode, "' == 'full'"])
 
 
+def _planner_only_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
+    return PythonExpression(["'", nav_stack_mode, "' == 'planner_only'"])
+
+
 def _controller_only_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
     return PythonExpression(["'", nav_stack_mode, "' == 'controller_only'"])
 
@@ -105,9 +109,15 @@ def _launch_setup(context, *args, **kwargs):
     external_map_manager = LaunchConfiguration('external_map_manager')
     nav_stack_mode = LaunchConfiguration('nav_stack_mode')
     nav_stack_mode_value = nav_stack_mode.perform(context)
-    if nav_stack_mode_value not in {'full', 'controller_only', 'safety_only'}:
+    if nav_stack_mode_value not in {
+        'full',
+        'planner_only',
+        'controller_only',
+        'safety_only',
+    }:
         raise RuntimeError(
-            "nav_stack_mode must be 'full', 'controller_only' or 'safety_only', "
+            "nav_stack_mode must be 'full', 'planner_only', "
+            "'controller_only' or 'safety_only', "
             f"got {nav_stack_mode_value!r}"
         )
     log_level = LaunchConfiguration('log_level')
@@ -266,7 +276,7 @@ def _launch_setup(context, *args, **kwargs):
             condition=IfCondition(PythonExpression([
                 "'",
                 nav_stack_mode,
-                "' != 'safety_only'",
+                "' in ('full', 'controller_only')",
             ])),
             package='nav2_controller',
             executable='controller_server',
@@ -287,7 +297,11 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
-            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
+            condition=IfCondition(PythonExpression([
+                "'",
+                nav_stack_mode,
+                "' in ('full', 'planner_only')",
+            ])),
             package='nav2_planner',
             executable='planner_server',
             name='planner_server',
@@ -327,6 +341,11 @@ def _launch_setup(context, *args, **kwargs):
             remappings=remappings,
         ),
         Node(
+            condition=IfCondition(PythonExpression([
+                "'",
+                nav_stack_mode,
+                "' in ('full', 'controller_only')",
+            ])),
             package='nav2_velocity_smoother',
             executable='velocity_smoother',
             name='velocity_smoother',
@@ -382,6 +401,21 @@ def _launch_setup(context, *args, **kwargs):
         }],
     )
 
+    planner_only_activator = Node(
+        condition=IfCondition(_planner_only_enabled(nav_stack_mode)),
+        package='airos_experiments',
+        executable='lifecycle_activator',
+        name='planner_only_lifecycle_activator',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'node_names': ['/planner_server'],
+            'attempts': 20,
+            'service_timeout_sec': 3.0,
+            'poll_period_sec': 1.0,
+        }],
+    )
+
     controller_only_activator = Node(
         condition=IfCondition(_controller_only_enabled(nav_stack_mode)),
         package='airos_experiments',
@@ -416,7 +450,15 @@ def _launch_setup(context, *args, **kwargs):
         }],
     )
 
-    collision_monitor = GroupAction([
+    collision_monitor = GroupAction(
+        condition=IfCondition(PythonExpression([
+            "'",
+            nav_stack_mode,
+            "' in ('full', 'controller_only', 'safety_only') and '",
+            collision_scan_topic,
+            "' != ''",
+        ])),
+        actions=[
         Node(
             package='nav2_collision_monitor',
             executable='collision_monitor',
@@ -439,7 +481,7 @@ def _launch_setup(context, *args, **kwargs):
                 {'node_names': ['collision_monitor']},
             ],
         ),
-    ]
+        ]
     )
 
     route_server = GroupAction(
@@ -493,6 +535,7 @@ def _launch_setup(context, *args, **kwargs):
         external_localization_map_manager,
         navigation_nodes,
         slam_nav_coordinator,
+        planner_only_activator,
         controller_only_activator,
         safety_only_activator,
         collision_monitor,

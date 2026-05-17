@@ -291,6 +291,62 @@ Visualization Manager:
     Value: true
   - Alpha: 1
     Class: rviz_default_plugins/Path
+    Color: 25; 180; 255
+    Enabled: true
+    Line Style: Lines
+    Line Width: 0.08
+    Name: Compare Smac Path
+    Topic:
+      Depth: 10
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /planner_compare/smac_path
+    Value: true
+  - Alpha: 1
+    Class: rviz_default_plugins/Path
+    Color: 60; 230; 80
+    Enabled: true
+    Line Style: Lines
+    Line Width: 0.08
+    Name: Compare Theta* Path
+    Topic:
+      Depth: 10
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /planner_compare/theta_star_path
+    Value: true
+  - Alpha: 1
+    Class: rviz_default_plugins/Path
+    Color: 190; 80; 255
+    Enabled: true
+    Line Style: Lines
+    Line Width: 0.08
+    Name: Compare Q-learning Path
+    Topic:
+      Depth: 10
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /planner_compare/q_learning_path
+    Value: true
+  - Alpha: 1
+    Class: rviz_default_plugins/Path
+    Color: 255; 130; 25
+    Enabled: true
+    Line Style: Lines
+    Line Width: 0.08
+    Name: Compare RRT* Path
+    Topic:
+      Depth: 10
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /planner_compare/rrt_star_path
+    Value: true
+  - Alpha: 1
+    Class: rviz_default_plugins/Path
     Color: 255; 140; 30
     Enabled: false
     Line Style: Lines
@@ -333,6 +389,16 @@ Visualization Manager:
       Reliability Policy: Reliable
       Value: /dynamic_obstacles/markers
     Value: false
+  - Class: rviz_default_plugins/MarkerArray
+    Enabled: true
+    Name: Planner Compare Metrics
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /planner_compare/metrics_markers
+    Value: true
   Enabled: true
   Global Options:
     Background Color: 24; 26; 30
