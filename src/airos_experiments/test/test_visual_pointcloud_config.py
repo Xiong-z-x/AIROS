@@ -96,6 +96,9 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'input_topic': '/cloud_registered'" in launch_text
     assert "'output_topic': '/cloud_registered_world'" in launch_text
     assert "'cloud_topic': '/cloud_registered_world'" in launch_text
+    assert "'pose_source': 'tf'" in launch_text
+    assert "'map_frame': 'map'" in launch_text
+    assert "'base_frame': 'base_footprint'" in launch_text
     assert "'scan_topic': '/slam_scan'" in launch_text
     assert "'min_z': 0.45" in launch_text
     assert "'surface_estimate_radius': 0.75" in launch_text
@@ -407,6 +410,7 @@ def test_nav_rviz_prefers_nav2_map_and_shows_aligned_slam_cloud() -> None:
     terrain_cloud = _rviz_display(
         'Terrain Traversability Cloud /terrain_traversability_cloud'
     )
+    fast_lio_cost_scan = _rviz_display('FAST-LIO Cost Scan /slam_scan')
     dense_building_cloud = _rviz_display(
         'Dense Building Cloud /dense_visual_cloud'
     )
@@ -438,6 +442,12 @@ def test_nav_rviz_prefers_nav2_map_and_shows_aligned_slam_cloud() -> None:
     assert terrain_cloud['Style'] == 'Points'
     assert terrain_cloud['Size (Pixels)'] == 2
     assert terrain_cloud['Size (m)'] == 0.02
+
+    assert fast_lio_cost_scan['Enabled'] is True
+    assert fast_lio_cost_scan['Value'] is True
+    assert fast_lio_cost_scan['Topic']['Value'] == '/slam_scan'
+    assert fast_lio_cost_scan['Color Transformer'] == 'FlatColor'
+    assert fast_lio_cost_scan['Style'] == 'Flat Squares'
 
     assert dense_building_cloud['Enabled'] is False
     assert dense_building_cloud['Value'] is False
@@ -510,7 +520,10 @@ def test_nav2_planner_defaults_to_smac2d_for_single_floor() -> None:
     bt_params = nav_params['bt_navigator']['ros__parameters']
     grid_based = nav_params['planner_server']['ros__parameters']['GridBased']
     global_costmap = nav_params['global_costmap']['global_costmap']['ros__parameters']
+    local_costmap = nav_params['local_costmap']['local_costmap']['ros__parameters']
     static_layer = global_costmap['static_layer']
+    global_obstacle_layer = global_costmap['obstacle_layer']
+    local_obstacle_layer = local_costmap['obstacle_layer']
 
     assert bt_params['bt_loop_duration'] == 50
     assert bt_params['default_server_timeout'] == 1000
@@ -521,6 +534,16 @@ def test_nav2_planner_defaults_to_smac2d_for_single_floor() -> None:
     assert global_costmap['track_unknown_space'] is False
     assert static_layer['map_subscribe_transient_local'] is True
     assert static_layer['subscribe_to_updates'] is True
+    assert global_obstacle_layer['observation_sources'] == (
+        'scan fast_lio_slam_scan'
+    )
+    assert local_obstacle_layer['observation_sources'] == (
+        'scan fast_lio_slam_scan'
+    )
+    assert global_obstacle_layer['fast_lio_slam_scan']['topic'] == '/slam_scan'
+    assert local_obstacle_layer['fast_lio_slam_scan']['topic'] == '/slam_scan'
+    assert global_obstacle_layer['fast_lio_slam_scan']['marking'] is True
+    assert global_obstacle_layer['fast_lio_slam_scan']['clearing'] is False
 
 
 def test_airos_nav_depends_on_mppi_and_smac_planner() -> None:

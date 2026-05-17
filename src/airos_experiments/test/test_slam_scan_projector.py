@@ -4,6 +4,7 @@ import math
 import struct
 from pathlib import Path
 
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2, PointField
 
@@ -36,6 +37,17 @@ def _odom(x: float = 0.0, y: float = 0.0, yaw: float = 0.0) -> Odometry:
     msg.pose.pose.position.y = y
     msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
     msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
+    return msg
+
+
+def _transform(x: float = 0.0, y: float = 0.0, yaw: float = 0.0) -> TransformStamped:
+    msg = TransformStamped()
+    msg.header.frame_id = 'map'
+    msg.child_frame_id = 'base_footprint'
+    msg.transform.translation.x = x
+    msg.transform.translation.y = y
+    msg.transform.rotation.z = math.sin(yaw / 2.0)
+    msg.transform.rotation.w = math.cos(yaw / 2.0)
     return msg
 
 
@@ -207,6 +219,41 @@ def test_project_cloud_to_scan_respects_odom_yaw() -> None:
 
     forward_index = int(round((0.0 - scan.angle_min) / scan.angle_increment))
     assert scan.ranges[forward_index] == 1.0
+
+
+def test_project_cloud_to_scan_accepts_tf_pose_source() -> None:
+    cloud = _xyz_pointcloud([
+        (2.0, 1.0, 0.4),
+    ])
+
+    scan = project_cloud_to_scan(
+        cloud,
+        _transform(x=1.0, y=1.0, yaw=0.0),
+        frame_id='base_footprint',
+        angle_min=-math.pi,
+        angle_max=math.pi,
+        angle_increment=math.pi / 4.0,
+        range_min=0.05,
+        range_max=5.0,
+        min_z=-0.1,
+        max_z=1.0,
+    )
+
+    forward_index = int(round((0.0 - scan.angle_min) / scan.angle_increment))
+    assert scan.ranges[forward_index] == 1.0
+
+
+def test_slam_scan_projector_can_use_tf_pose_for_nav2_costmap_fusion() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    source = (
+        repo_root / 'src/airos_experiments/airos_experiments/slam_scan_projector.py'
+    ).read_text(encoding='utf-8')
+
+    assert "self.declare_parameter('pose_source', 'odom')" in source
+    assert "self.declare_parameter('map_frame', 'map')" in source
+    assert "self.declare_parameter('base_frame', 'base_footprint')" in source
+    assert "lookup_transform(" in source
+    assert "pose_source must be 'odom' or 'tf'" in source
 
 
 def test_slam_scan_projector_is_installed_as_console_script() -> None:

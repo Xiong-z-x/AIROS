@@ -3,7 +3,9 @@ from __future__ import annotations
 import math
 
 import rclpy
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import (
     QoSDurabilityPolicy,
@@ -12,6 +14,7 @@ from rclpy.qos import (
     QoSReliabilityPolicy,
 )
 from sensor_msgs.msg import LaserScan, PointCloud2
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from airos_experiments.scan_emulator import _yaw_from_quaternion
 from airos_experiments.slam_traversability_graph import sample_xyz_points
@@ -22,7 +25,7 @@ _SUPPORT_BIN_SIZE = 0.45
 
 def project_cloud_to_scan(
     cloud: PointCloud2,
-    odom: Odometry,
+    odom: Odometry | TransformStamped,
     *,
     frame_id: str,
     angle_min: float,
@@ -50,16 +53,7 @@ def project_cloud_to_scan(
     beam_count = max(1, int(math.floor((angle_max - angle_min) / angle_increment)) + 1)
     ranges = [math.inf] * beam_count
 
-    base_x = float(odom.pose.pose.position.x)
-    base_y = float(odom.pose.pose.position.y)
-    base_z = float(odom.pose.pose.position.z)
-    orientation = odom.pose.pose.orientation
-    base_yaw = _yaw_from_quaternion(
-        float(orientation.x),
-        float(orientation.y),
-        float(orientation.z),
-        float(orientation.w),
-    )
+    base_x, base_y, base_z, base_yaw = _base_pose_from_odometry_or_transform(odom)
     cos_yaw = math.cos(-base_yaw)
     sin_yaw = math.sin(-base_yaw)
 
@@ -102,6 +96,36 @@ def project_cloud_to_scan(
 
     scan.ranges = ranges
     return scan
+
+
+def _base_pose_from_odometry_or_transform(
+    source: Odometry | TransformStamped,
+) -> tuple[float, float, float, float]:
+    if isinstance(source, TransformStamped):
+        translation = source.transform.translation
+        orientation = source.transform.rotation
+        return (
+            float(translation.x),
+            float(translation.y),
+            float(translation.z),
+            _yaw_from_quaternion(
+                float(orientation.x),
+                float(orientation.y),
+                float(orientation.z),
+                float(orientation.w),
+            ),
+        )
+    base_x = float(source.pose.pose.position.x)
+    base_y = float(source.pose.pose.position.y)
+    base_z = float(source.pose.pose.position.z)
+    orientation = source.pose.pose.orientation
+    base_yaw = _yaw_from_quaternion(
+        float(orientation.x),
+        float(orientation.y),
+        float(orientation.z),
+        float(orientation.w),
+    )
+    return base_x, base_y, base_z, base_yaw
 
 
 def _build_lower_support_bins(
@@ -184,6 +208,10 @@ class SlamScanProjector(Node):
         super().__init__('slam_scan_projector')
         self.declare_parameter('cloud_topic', '/Laser_map_world')
         self.declare_parameter('odom_topic', '/odom')
+        self.declare_parameter('pose_source', 'odom')
+        self.declare_parameter('map_frame', 'map')
+        self.declare_parameter('base_frame', 'base_footprint')
+        self.declare_parameter('tf_timeout_sec', 0.05)
         self.declare_parameter('scan_topic', '/slam_scan')
         self.declare_parameter('scan_frame', 'base_footprint')
         self.declare_parameter('publish_rate_hz', 6.0)
@@ -200,6 +228,14 @@ class SlamScanProjector(Node):
 
         self._cloud: PointCloud2 | None = None
         self._odom: Odometry | None = None
+        self._pose_source = str(self.get_parameter('pose_source').value)
+        if self._pose_source not in {'odom', 'tf'}:
+            raise ValueError("pose_source must be 'odom' or 'tf'")
+        self._map_frame = str(self.get_parameter('map_frame').value)
+        self._base_frame = str(self.get_parameter('base_frame').value)
+        self._tf_timeout_sec = float(self.get_parameter('tf_timeout_sec').value)
+        self._tf_buffer = Buffer(cache_time=Duration(seconds=20.0))
+        self._tf_listener = TransformListener(self._tf_buffer, self)
         self._scan_frame = str(self.get_parameter('scan_frame').value)
         self._angle_min = float(self.get_parameter('angle_min').value)
         self._angle_max = float(self.get_parameter('angle_max').value)
@@ -233,12 +269,13 @@ class SlamScanProjector(Node):
             self._cloud_callback,
             qos,
         )
-        self.create_subscription(
-            Odometry,
-            str(self.get_parameter('odom_topic').value),
-            self._odom_callback,
-            qos,
-        )
+        if self._pose_source == 'odom':
+            self.create_subscription(
+                Odometry,
+                str(self.get_parameter('odom_topic').value),
+                self._odom_callback,
+                qos,
+            )
         self.create_timer(
             1.0 / max(float(self.get_parameter('publish_rate_hz').value), 0.1),
             self._publish_scan,
@@ -256,11 +293,14 @@ class SlamScanProjector(Node):
         self._odom = msg
 
     def _publish_scan(self) -> None:
-        if self._cloud is None or self._odom is None:
+        if self._cloud is None:
+            return
+        pose = self._current_pose()
+        if pose is None:
             return
         scan = project_cloud_to_scan(
             self._cloud,
-            self._odom,
+            pose,
             frame_id=self._scan_frame,
             angle_min=self._angle_min,
             angle_max=self._angle_max,
@@ -275,6 +315,19 @@ class SlamScanProjector(Node):
         )
         scan.header.stamp = self.get_clock().now().to_msg()
         self._publisher.publish(scan)
+
+    def _current_pose(self) -> Odometry | TransformStamped | None:
+        if self._pose_source == 'odom':
+            return self._odom
+        try:
+            return self._tf_buffer.lookup_transform(
+                self._map_frame,
+                self._base_frame,
+                rclpy.time.Time(),
+                timeout=Duration(seconds=max(self._tf_timeout_sec, 0.0)),
+            )
+        except TransformException:
+            return None
 
 
 def main() -> None:
