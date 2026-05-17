@@ -28,15 +28,17 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
 
     assert "'pointcloud_registered': 'false'" in launch_text
     assert "'pointcloud_map': 'false'" in launch_text
-    assert "'localization': 'external'" in launch_text
+    assert "'localization': LaunchConfiguration('localization')" in launch_text
+    assert "DeclareLaunchArgument('localization', default_value='static')" in launch_text
+    assert "DeclareLaunchArgument('fast_lio_debug', default_value='false')" in launch_text
     assert "executable='fast_lio_localization_bridge'" in launch_text
     assert "'fast_lio_odom_topic': '/Odometry'" in launch_text
     assert "'wheel_odom_topic': '/odom'" in launch_text
     assert "'aligned_odom_topic': '/fast_lio_odom_world'" in launch_text
     assert 'static_map_to_odom' not in launch_text
     assert "executable='pointcloud_colorizer'" in launch_text
-    assert "DeclareLaunchArgument('colorized_pointcloud', default_value='true')" in launch_text
-    assert "DeclareLaunchArgument('dense_visual_pointcloud', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('colorized_pointcloud', default_value='false')" in launch_text
+    assert "DeclareLaunchArgument('dense_visual_pointcloud', default_value='false')" in launch_text
     assert "DeclareLaunchArgument('pointcloud_spacing', default_value='0.06')" in launch_text
     assert "DeclareLaunchArgument('max_live_points', default_value='180000')" in launch_text
     assert (
@@ -46,22 +48,22 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
         "DeclareLaunchArgument('fast_lio_max_live_points', default_value='12000')"
     ) in launch_text
     assert "executable='terrain_pct_planner'" in launch_text
-    assert "DeclareLaunchArgument('terrain_planner', default_value='true')" in launch_text
+    assert "DeclareLaunchArgument('terrain_planner', default_value='false')" in launch_text
     assert "DeclareLaunchArgument('terrain_map_source', default_value='slam_cloud')" in launch_text
     assert (
-        "DeclareLaunchArgument('collision_scan_topic', default_value='/slam_scan')"
+        "DeclareLaunchArgument('collision_scan_topic', default_value='/scan')"
     ) in launch_text
-    assert "DeclareLaunchArgument('terrain_goal_min_z', default_value='1.60')" in launch_text
+    assert "DeclareLaunchArgument('terrain_goal_min_z', default_value='-1.0')" in launch_text
     assert "DeclareLaunchArgument('slam_map_max_points', default_value='180000')" in launch_text
     assert "DeclareLaunchArgument('slam_grid_resolution', default_value='0.30')" in launch_text
     assert "DeclareLaunchArgument('slam_min_cell_points', default_value='2')" in launch_text
     assert "DeclareLaunchArgument('slam_vertical_layer_gap', default_value='0.18')" in launch_text
     assert "DeclareLaunchArgument('slam_rebuild_period_sec', default_value='3.0')" in launch_text
     assert "DeclareLaunchArgument('use_route', default_value='false')" in launch_text
-    assert "DeclareLaunchArgument('nav_stack_mode', default_value='safety_only')" in launch_text
+    assert "DeclareLaunchArgument('nav_stack_mode', default_value='full')" in launch_text
     assert "DeclareLaunchArgument('dynamic_obstacles', default_value='false')" in launch_text
     assert (
-        "DeclareLaunchArgument('world', default_value='large_multilevel_complex')"
+        "DeclareLaunchArgument('world', default_value='single_floor_complex_large')"
     ) in launch_text
     assert "'point_spacing': LaunchConfiguration('fast_lio_pointcloud_spacing')" in launch_text
     assert "'max_live_points': LaunchConfiguration('fast_lio_max_live_points')" in launch_text
@@ -93,7 +95,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'surface_estimate_min_points': 3" in launch_text
     assert "'collision_scan_topic': LaunchConfiguration('collision_scan_topic')" in launch_text
     assert (
-        "DeclareLaunchArgument('terrain_goal_z_policy', default_value='highest')"
+        "DeclareLaunchArgument('terrain_goal_z_policy', default_value='nearest_z')"
     ) in launch_text
     assert "DeclareLaunchArgument('terrain_goal_max_z', default_value='-1.0')" in launch_text
     assert "'goal_z_policy': LaunchConfiguration('terrain_goal_z_policy')" in launch_text
@@ -132,15 +134,15 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'direct_z_tolerance': 0.45" in launch_text
     assert "'direct_max_linear_speed': 0.30" in launch_text
     assert "'direct_max_angular_speed': 0.45" in launch_text
-    assert "'large_multilevel_complex_static.sdf'" in launch_text
+    assert "'single_floor_complex_large_static.sdf'" in launch_text
     assert "'start_waypoint_clearance': 0.75" in launch_text
     assert "'follow_path_start_clearance': 0.12" in launch_text
     assert "'slope_speed_limit': 0.16" in launch_text
     assert "'flat_speed_limit': 0.32" in launch_text
     assert "'initial_surface_z_hint': LaunchConfiguration('robot_spawn_z')" in launch_text
-    assert "DeclareLaunchArgument('robot_spawn_y', default_value='-10.0')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_y', default_value='0.0')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
-    assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='-1.5708')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0')" in launch_text
     assert "'min_visible_z': 0.08" in launch_text
     assert "'max_points': 800000" in launch_text
 
@@ -391,7 +393,8 @@ def test_visual_navigation_does_not_publish_simulated_laser_map() -> None:
     assert "'pointcloud_map': 'false'" in launch_text
 
 
-def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
+def test_nav_rviz_prefers_nav2_map_and_hides_fast_lio_debug_clouds() -> None:
+    nav_map = _rviz_display('Nav2 Map /map')
     laser_map = _rviz_display('PointCloud Map /Laser_map')
     colorized_map = _rviz_display('Colorized PointCloud Map /Laser_map_colored')
     terrain_cloud = _rviz_display(
@@ -403,13 +406,17 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
     livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
+    assert nav_map['Enabled'] is True
+    assert nav_map['Value'] is True
+    assert nav_map['Topic']['Value'] == '/map'
+
     assert laser_map['Enabled'] is False
     assert laser_map['Value'] is False
     assert laser_map['Style'] == 'Points'
     assert laser_map['Decay Time'] == 0
 
-    assert colorized_map['Enabled'] is True
-    assert colorized_map['Value'] is True
+    assert colorized_map['Enabled'] is False
+    assert colorized_map['Value'] is False
     assert colorized_map['Color Transformer'] == 'RGB8'
     assert colorized_map['Topic']['Value'] == '/Laser_map_colored'
     assert colorized_map['Decay Time'] == 0
@@ -417,16 +424,16 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     assert colorized_map['Size (Pixels)'] == 2
     assert colorized_map['Size (m)'] == 0.02
 
-    assert terrain_cloud['Enabled'] is True
-    assert terrain_cloud['Value'] is True
+    assert terrain_cloud['Enabled'] is False
+    assert terrain_cloud['Value'] is False
     assert terrain_cloud['Topic']['Value'] == '/terrain_traversability_cloud'
     assert terrain_cloud['Topic']['Durability Policy'] == 'Transient Local'
     assert terrain_cloud['Style'] == 'Points'
     assert terrain_cloud['Size (Pixels)'] == 2
     assert terrain_cloud['Size (m)'] == 0.02
 
-    assert dense_building_cloud['Enabled'] is True
-    assert dense_building_cloud['Value'] is True
+    assert dense_building_cloud['Enabled'] is False
+    assert dense_building_cloud['Value'] is False
     assert dense_building_cloud['Topic']['Value'] == '/dense_visual_cloud'
     assert dense_building_cloud['Color Transformer'] == 'AxisColor'
     assert dense_building_cloud['Style'] == 'Points'
@@ -434,8 +441,8 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     assert dense_building_cloud['Size (m)'] == 0.012
     assert dense_building_cloud['Decay Time'] == 0
 
-    assert registered_cloud['Enabled'] is True
-    assert registered_cloud['Value'] is True
+    assert registered_cloud['Enabled'] is False
+    assert registered_cloud['Value'] is False
     assert registered_cloud['Color Transformer'] == 'AxisColor'
     assert registered_cloud['Style'] == 'Points'
     assert registered_cloud['Size (Pixels)'] == 2
@@ -451,31 +458,28 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
         assert live_cloud['Topic']['Depth'] == 1
 
 
-def test_nav_rviz_shows_terrain_path_and_hides_dynamic_obstacles_by_default() -> None:
+def test_nav_rviz_uses_nav2_goal_and_hides_pct_path_by_default() -> None:
     rviz_config = yaml.safe_load(_read_text('src/airos_nav/rviz/nav.rviz'))
     tools = rviz_config['Visualization Manager']['Tools']
     tool_classes = {tool['Class'] for tool in tools}
     terrain_path = _rviz_display('Terrain PCT Path /pct_path')
     dynamic_obstacles = _rviz_display('Dynamic Obstacles')
 
-    assert 'rviz_default_plugins/SetGoal' in tool_classes
-    assert 'nav2_rviz_plugins/GoalTool' not in tool_classes
-    assert not any(
+    assert 'nav2_rviz_plugins/GoalTool' in tool_classes
+    assert 'rviz_default_plugins/SetGoal' not in tool_classes
+    assert any(
         panel['Class'] == 'nav2_rviz_plugins/Navigation 2'
         for panel in rviz_config['Panels']
     )
-    goal_tool = next(
-        tool for tool in tools if tool['Class'] == 'rviz_default_plugins/SetGoal'
-    )
-    assert goal_tool['Topic']['Value'] == '/terrain_goal_pose'
-    assert terrain_path['Enabled'] is True
+    assert terrain_path['Enabled'] is False
+    assert terrain_path['Value'] is False
     assert terrain_path['Topic']['Value'] == '/pct_path'
     assert dynamic_obstacles['Enabled'] is False
     assert dynamic_obstacles['Topic']['Value'] == '/dynamic_obstacles/markers'
     assert dynamic_obstacles['Value'] is False
 
 
-def test_rotation_shim_over_rpp_commands_fit_safe_velocity_chain() -> None:
+def test_mppi_commands_fit_safe_velocity_chain() -> None:
     nav_params = yaml.safe_load(
         _read_text('src/airos_nav/config/nav2_params.yaml')
     )
@@ -483,27 +487,33 @@ def test_rotation_shim_over_rpp_commands_fit_safe_velocity_chain() -> None:
     follow_path = controller_params['FollowPath']
     smoother_params = nav_params['velocity_smoother']['ros__parameters']
 
-    assert follow_path['plugin'] == (
-        'nav2_rotation_shim_controller::RotationShimController'
-    )
-    assert follow_path['primary_controller'] == (
-        'nav2_regulated_pure_pursuit_controller::'
-        'RegulatedPurePursuitController'
-    )
-    assert follow_path['desired_linear_vel'] <= smoother_params['max_velocity'][0]
-    assert (
-        follow_path['rotate_to_heading_angular_vel']
-        <= smoother_params['max_velocity'][2]
-    )
-    assert follow_path['allow_reversing'] is False
-    assert follow_path['use_rotate_to_heading'] is False
+    assert follow_path['plugin'] == 'nav2_mppi_controller::MPPIController'
+    assert follow_path['motion_model'] == 'DiffDrive'
+    assert follow_path['vx_max'] <= smoother_params['max_velocity'][0]
+    assert follow_path['wz_max'] <= smoother_params['max_velocity'][2]
+    assert follow_path['vx_min'] >= 0.0
+    assert 'CostCritic' in follow_path['critics']
+    assert 'PreferForwardCritic' in follow_path['critics']
 
 
-def test_airos_nav_depends_on_pure_pursuit_controller_not_mppi() -> None:
+def test_nav2_planner_defaults_to_smac2d_for_single_floor() -> None:
+    nav_params = yaml.safe_load(
+        _read_text('src/airos_nav/config/nav2_params.yaml')
+    )
+    grid_based = nav_params['planner_server']['ros__parameters']['GridBased']
+    global_costmap = nav_params['global_costmap']['global_costmap']['ros__parameters']
+
+    assert grid_based['plugin'] == 'nav2_smac_planner/SmacPlanner2D'
+    assert grid_based['allow_unknown'] is True
+    assert grid_based['use_final_approach_orientation'] is False
+    assert global_costmap['track_unknown_space'] is False
+
+
+def test_airos_nav_depends_on_mppi_and_smac_planner() -> None:
     package_xml = _read_text('src/airos_nav/package.xml')
 
-    assert 'nav2_regulated_pure_pursuit_controller' in package_xml
-    assert 'nav2_mppi_controller' not in package_xml
+    assert 'nav2_mppi_controller' in package_xml
+    assert 'nav2_smac_planner' in package_xml
 
 
 def test_fast_lio_sim_extrinsic_matches_republished_livox_imu_frame() -> None:

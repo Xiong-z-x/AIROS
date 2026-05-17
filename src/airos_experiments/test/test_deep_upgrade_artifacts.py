@@ -124,8 +124,9 @@ def test_nav_launch_exposes_planner_profile_and_advanced_defaults() -> None:
     assert "nav2_research_profile.yaml" in nav_launch
     assert "planner_profile" in nav_launch
     assert 'nav2_mppi_controller::MPPIController' in profile_text
+    assert 'nav2_smac_planner/SmacPlanner2D' in profile_text
     assert 'movement_time_allowance: 25.0' in profile_text
-    assert 'max_path_occupancy_ratio: 0.20' in profile_text
+    assert 'max_path_occupancy_ratio: 0.2' in profile_text
     assert 'generate_advanced_planner_candidates' in setup_text
     assert 'terrain_pct_planner' in setup_text
     assert 'airos_advanced_planner_candidate.v1' in candidate_text

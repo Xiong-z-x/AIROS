@@ -195,7 +195,7 @@ def test_sim_odom_is_gazebo_truth_not_wheel_integrator() -> None:
     )
 
 
-def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
+def test_nav2_uses_mppi_with_safe_velocity_chain() -> None:
     nav_params = yaml.safe_load(
         _read_text('src/airos_nav/config/nav2_params.yaml')
     )
@@ -206,28 +206,19 @@ def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:
     collision_monitor = nav_params['collision_monitor']['ros__parameters']
 
     assert controller['controller_plugins'] == ['FollowPath']
-    assert follow_path['plugin'] == (
-        'nav2_rotation_shim_controller::RotationShimController'
-    )
-    assert follow_path['primary_controller'] == (
-        'nav2_regulated_pure_pursuit_controller::'
-        'RegulatedPurePursuitController'
-    )
-    assert 0.22 <= follow_path['desired_linear_vel'] <= 0.24
-    assert follow_path['use_rotate_to_heading'] is False
-    assert follow_path['allow_reversing'] is False
-    assert 0.55 <= follow_path['angular_dist_threshold'] <= 0.9
-    assert (
-        0.25 <= follow_path['angular_disengage_threshold']
-        < follow_path['angular_dist_threshold']
-    )
-    assert 0.30 <= smoother['max_velocity'][0] <= 0.32
+    assert follow_path['plugin'] == 'nav2_mppi_controller::MPPIController'
+    assert follow_path['motion_model'] == 'DiffDrive'
+    assert follow_path['vx_min'] >= 0.0
+    assert follow_path['vx_max'] <= smoother['max_velocity'][0]
+    assert follow_path['wz_max'] <= smoother['max_velocity'][2]
+    assert 'CostCritic' in follow_path['critics']
+    assert 'PathFollowCritic' in follow_path['critics']
+    assert 'PreferForwardCritic' in follow_path['critics']
+    assert 0.22 <= smoother['max_velocity'][0] <= 0.24
     assert smoother['min_velocity'][0] >= 0.0
     assert 0.20 <= smoother['max_accel'][0] <= 0.22
     assert 0.12 <= progress_checker['required_movement_radius'] <= 0.25
     assert progress_checker['movement_time_allowance'] >= 18.0
-    assert follow_path['use_collision_detection'] is False
-    assert follow_path['cost_scaling_dist'] <= 0.35
     assert collision_monitor['StopZone']['max_points'] >= 5
     assert collision_monitor['SlowZone']['max_points'] >= 4
     assert collision_monitor['SlowZone']['slowdown_ratio'] >= 0.55

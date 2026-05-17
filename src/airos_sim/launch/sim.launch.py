@@ -84,6 +84,7 @@ def _launch_setup(context, *args, **kwargs):
     world_name = LaunchConfiguration('world').perform(context)
     world_files = {
         'single_floor_lab': 'single_floor_lab.sdf',
+        'single_floor_complex_large': 'single_floor_complex_large.sdf',
         'advanced_indoor_ramp': 'advanced_indoor_ramp.sdf',
         'realistic_multilevel_ramp': 'realistic_multilevel_ramp.sdf',
         'large_multilevel_complex': 'large_multilevel_complex.sdf',

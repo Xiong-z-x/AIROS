@@ -47,6 +47,10 @@ def _external_map_manager_enabled(
     ])
 
 
+def _map_server_enabled(localization: LaunchConfiguration) -> PythonExpression:
+    return PythonExpression(["'", localization, "' != 'slam_toolbox_mapping'"])
+
+
 def _full_stack_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpression:
     return PythonExpression(["'", nav_stack_mode, "' == 'full'"])
 
@@ -118,6 +122,7 @@ def _launch_setup(context, *args, **kwargs):
     ]
 
     map_server = Node(
+        condition=IfCondition(_map_server_enabled(localization)),
         package='nav2_map_server',
         executable='map_server',
         name='map_server',
@@ -154,6 +159,14 @@ def _launch_setup(context, *args, **kwargs):
     slam_localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_slam, 'launch', 'localization.launch.py')),
         condition=IfCondition(_is(localization, 'slam_toolbox')),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+        }.items(),
+    )
+
+    slam_mapping = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_slam, 'launch', 'mapping.launch.py')),
+        condition=IfCondition(_is(localization, 'slam_toolbox_mapping')),
         launch_arguments={
             'use_sim_time': use_sim_time,
         }.items(),
@@ -414,6 +427,7 @@ def _launch_setup(context, *args, **kwargs):
         amcl,
         localization_manager,
         slam_localization,
+        slam_mapping,
         map_only_manager,
         static_map_to_odom,
         static_map_manager,
