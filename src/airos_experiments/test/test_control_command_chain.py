@@ -21,6 +21,31 @@ def test_control_launch_has_no_cmd_vel_bypass_to_base_controller() -> None:
     assert 'cmd_vel_relay' not in launch_text
 
 
+def test_control_launch_can_spawn_champ_legged_controllers() -> None:
+    launch_text = _read_text('src/airos_control/launch/control.launch.py')
+    ros_control = yaml.safe_load(
+        _read_text('src/unitree_go2_sim/config/ros_control/ros_control.yaml')
+    )
+    controller_params = ros_control['controller_manager']['ros__parameters']
+
+    assert "robot_mobility_profile must be 'wheeled' or 'legged_champ'" in launch_text
+    assert "robot_mobility_profile == 'legged_champ'" in launch_text
+    assert 'joint_states_controller' in launch_text
+    assert 'joint_group_effort_controller' in launch_text
+    assert controller_params['update_rate'] == 100
+    assert (
+        controller_params['joint_group_effort_controller']['type']
+        == 'joint_trajectory_controller/JointTrajectoryController'
+    )
+    joints = ros_control['joint_group_effort_controller']['ros__parameters']['joints']
+    assert len(joints) == 12
+    assert all(
+        f'{leg}_{joint}_joint' in joints
+        for leg in ['lf', 'rf', 'lh', 'rh']
+        for joint in ['hip', 'upper_leg', 'lower_leg']
+    )
+
+
 def test_nav_launch_lifecycle_manages_collision_monitor_inline() -> None:
     launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
 
@@ -105,6 +130,36 @@ def test_fast_lio_single_floor_demo_script_uses_physical_odom_acceptance() -> No
     assert 'terrain_goal_min_z:=-1.0' in demo_script
     assert 'TERRAIN_GOAL_MAX_Z="${TERRAIN_GOAL_MAX_Z:-0.45}"' in demo_script
     assert 'terrain_goal_max_z:="$TERRAIN_GOAL_MAX_Z"' in demo_script
+    assert 'TERRAIN_MAX_STEP_HEIGHT="${TERRAIN_MAX_STEP_HEIGHT:-0.50}"' in demo_script
+    assert (
+        'TERRAIN_DIRECT_LOOKAHEAD_DIST="${TERRAIN_DIRECT_LOOKAHEAD_DIST:-0.45}"'
+    ) in demo_script
+    assert (
+        'TERRAIN_DIRECT_WAYPOINT_TOLERANCE="${TERRAIN_DIRECT_WAYPOINT_TOLERANCE:-0.42}"'
+    ) in demo_script
+    assert (
+        'TERRAIN_FOLLOW_PATH_START_CLEARANCE="${TERRAIN_FOLLOW_PATH_START_CLEARANCE:-0.12}"'
+    ) in demo_script
+    assert 'terrain_max_step_height:="$TERRAIN_MAX_STEP_HEIGHT"' in demo_script
+    assert (
+        'terrain_direct_lookahead_dist:="$TERRAIN_DIRECT_LOOKAHEAD_DIST"'
+    ) in demo_script
+    assert (
+        'terrain_direct_waypoint_tolerance:="$TERRAIN_DIRECT_WAYPOINT_TOLERANCE"'
+    ) in demo_script
+    assert (
+        'terrain_follow_path_start_clearance:="$TERRAIN_FOLLOW_PATH_START_CLEARANCE"'
+    ) in demo_script
+    assert 'ROBOT_MOBILITY_PROFILE="${ROBOT_MOBILITY_PROFILE:-legged_champ}"' in demo_script
+    assert 'LEGGED_CHAMP_CONTROLLER="${LEGGED_CHAMP_CONTROLLER:-true}"' in demo_script
+    assert 'LEGGED_CMD_VEL_TOPIC="${LEGGED_CMD_VEL_TOPIC:-/cmd_vel_champ}"' in demo_script
+    assert (
+        'CMD_VEL_OUT_TOPIC="${CMD_VEL_OUT_TOPIC:-/cmd_vel_champ}"'
+    ) in demo_script
+    assert 'robot_mobility_profile:="$ROBOT_MOBILITY_PROFILE"' in demo_script
+    assert 'legged_champ_controller:="$LEGGED_CHAMP_CONTROLLER"' in demo_script
+    assert 'legged_cmd_vel_topic:="$LEGGED_CMD_VEL_TOPIC"' in demo_script
+    assert 'cmd_vel_out_topic:="$CMD_VEL_OUT_TOPIC"' in demo_script
     assert 'terrain_odom_topic:=/odom' in demo_script
     assert 'cross_level_evidence_probe' in demo_script
     assert '--times "$GOAL_PUBLISH_COUNT"' in demo_script
@@ -193,6 +248,48 @@ def test_sim_odom_is_gazebo_truth_not_wheel_integrator() -> None:
         and entry.get('direction') == 'GZ_TO_ROS'
         for entry in bridge_entries
     )
+
+
+def test_legged_go2_description_uses_champ_frames_and_fortress_plugins() -> None:
+    sim_launch = _read_text('src/airos_sim/launch/sim.launch.py')
+    visual_launch = _read_text(
+        'src/airos_experiments/launch/visual_fast_lio_navigation.launch.py'
+    )
+    nav_launch = _read_text('src/airos_nav/launch/nav.launch.py')
+    go2_urdf = _read_text(
+        'src/unitree_go2_description/urdf/unitree_go2_robot.xacro'
+    )
+    go2_gazebo = _read_text(
+        'src/unitree_go2_description/urdf/unitree_go2_gazebo.xacro'
+    )
+    gait = yaml.safe_load(_read_text('src/unitree_go2_sim/config/gait/gait.yaml'))
+    gait_params = gait['/**']['ros__parameters']['gait']
+
+    assert "robot_mobility_profile', default_value='legged_champ'" in sim_launch
+    assert "legged_champ_controller', default_value='true'" in sim_launch
+    assert "robot_mobility_profile must be 'wheeled' or 'legged_champ'" in sim_launch
+    assert "robot_name = 'unitree_go2_legged'" in sim_launch
+    assert "executable='quadruped_controller_node'" in sim_launch
+    assert "executable='state_estimation_node'" in sim_launch
+    assert (
+        "legged_cmd_vel_topic = LaunchConfiguration('legged_cmd_vel_topic').perform(context)"
+        in sim_launch
+    )
+    assert "remappings=[('/cmd_vel/smooth', legged_cmd_vel_topic)]" in sim_launch
+    assert "'legged_cmd_vel_topic': LaunchConfiguration('legged_cmd_vel_topic')" in visual_launch
+    assert "DeclareLaunchArgument('legged_cmd_vel_topic', default_value='/cmd_vel_champ')" in visual_launch
+    assert "'cmd_vel_out_topic': LaunchConfiguration('cmd_vel_out_topic')" in visual_launch
+    assert "'cmd_vel_out_topic': cmd_vel_out_topic" in nav_launch
+    assert 'name="base_footprint"' in go2_urdf
+    assert 'name="base_footprint_joint"' in go2_urdf
+    assert '<xacro:arg name="enable_d455" default="false"/>' in go2_urdf
+    assert '<xacro:if value="$(arg enable_d455)">' in go2_urdf
+    assert 'ignition::gazebo::systems::OdometryPublisher' in go2_gazebo
+    assert '<robot_base_frame>base_footprint</robot_base_frame>' in go2_gazebo
+    assert gait_params['max_linear_velocity_x'] == 0.3
+    assert gait_params['max_angular_velocity_z'] == 0.5
+    assert gait_params['swing_height'] == 0.04
+    assert gait_params['nominal_height'] == 0.225
 
 
 def test_nav2_uses_rotation_shim_over_conservative_pure_pursuit() -> None:

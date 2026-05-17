@@ -91,6 +91,7 @@ def _launch_setup(context, *args, **kwargs):
         )
     log_level = LaunchConfiguration('log_level')
     collision_scan_topic = LaunchConfiguration('collision_scan_topic')
+    cmd_vel_out_topic = LaunchConfiguration('cmd_vel_out_topic')
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -100,6 +101,7 @@ def _launch_setup(context, *args, **kwargs):
                 'use_sim_time': use_sim_time,
                 'yaml_filename': map_file,
                 'graph_filepath': route_graph,
+                'cmd_vel_out_topic': cmd_vel_out_topic,
             },
             convert_types=True,
         ),
@@ -465,6 +467,10 @@ def generate_launch_description():
         DeclareLaunchArgument('nav_stack_mode', default_value='full'),
         DeclareLaunchArgument('external_map_manager', default_value='true'),
         DeclareLaunchArgument('collision_scan_topic', default_value='/scan'),
+        DeclareLaunchArgument(
+            'cmd_vel_out_topic',
+            default_value='/cmd_vel_champ',
+        ),
         DeclareLaunchArgument('log_level', default_value='info'),
         OpaqueFunction(function=_launch_setup),
     ])

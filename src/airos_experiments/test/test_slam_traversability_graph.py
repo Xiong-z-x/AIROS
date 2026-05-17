@@ -235,6 +235,52 @@ def test_slam_graph_rejects_sparse_floor_to_deck_edge_jump() -> None:
     assert path == []
 
 
+def test_wheel_safe_step_limit_rejects_low_board_crossing() -> None:
+    points: list[tuple[float, float, float]] = []
+    for x in (-0.50, -0.25, 0.25, 0.50):
+        for y in (-0.10, 0.0, 0.10):
+            points.append((x, y, 0.0))
+    for y in (-0.10, 0.0, 0.10):
+        points.append((0.0, y, 0.10))
+
+    wheel_safe_graph = build_slam_graph_from_points(
+        points,
+        grid_resolution=0.25,
+        max_slope_grade=0.58,
+        max_step_height=0.06,
+        max_surface_transition_height=0.06,
+        min_cell_points=1,
+        vertical_layer_gap=0.04,
+    )
+    wheel_safe_path = plan_slam_graph_path(
+        wheel_safe_graph,
+        start_xy=(-0.50, 0.0),
+        goal_xy=(0.50, 0.0),
+        start_z=0.0,
+        goal_z_policy='lowest',
+    )
+
+    permissive_graph = build_slam_graph_from_points(
+        points,
+        grid_resolution=0.25,
+        max_slope_grade=0.58,
+        max_step_height=0.50,
+        max_surface_transition_height=0.12,
+        min_cell_points=1,
+        vertical_layer_gap=0.04,
+    )
+    permissive_path = plan_slam_graph_path(
+        permissive_graph,
+        start_xy=(-0.50, 0.0),
+        goal_xy=(0.50, 0.0),
+        start_z=0.0,
+        goal_z_policy='lowest',
+    )
+
+    assert wheel_safe_path == []
+    assert permissive_path
+
+
 def test_slam_graph_routes_large_world_spawn_to_third_level() -> None:
     points = [
         (x, y, z)

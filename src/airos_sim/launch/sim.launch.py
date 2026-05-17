@@ -79,6 +79,8 @@ def _launch_setup(context, *args, **kwargs):
     pkg_sim = get_package_share_directory('airos_sim')
     pkg_desc = get_package_share_directory('airos_go2w_description')
     pkg_control = get_package_share_directory('airos_control')
+    pkg_go2_desc = get_package_share_directory('unitree_go2_description')
+    pkg_go2_sim = get_package_share_directory('unitree_go2_sim')
 
     gui = LaunchConfiguration('gui').perform(context).lower() in {'true', '1', 'yes'}
     world_name = LaunchConfiguration('world').perform(context)
@@ -118,6 +120,12 @@ def _launch_setup(context, *args, **kwargs):
             "robot_visual_profile must be 'analytic' or 'reference_mesh', "
             f"got {robot_visual_profile!r}"
         )
+    robot_mobility_profile = LaunchConfiguration('robot_mobility_profile').perform(context)
+    if robot_mobility_profile not in {'wheeled', 'legged_champ'}:
+        raise RuntimeError(
+            "robot_mobility_profile must be 'wheeled' or 'legged_champ', "
+            f"got {robot_mobility_profile!r}"
+        )
     sensor_source = LaunchConfiguration('sensor_source').perform(context).lower()
     if sensor_source not in {'native', 'emulated'}:
         raise RuntimeError(
@@ -144,6 +152,7 @@ def _launch_setup(context, *args, **kwargs):
     robot_spawn_y = LaunchConfiguration('robot_spawn_y').perform(context)
     robot_spawn_z = LaunchConfiguration('robot_spawn_z').perform(context)
     robot_spawn_yaw = LaunchConfiguration('robot_spawn_yaw').perform(context)
+    legged_cmd_vel_topic = LaunchConfiguration('legged_cmd_vel_topic').perform(context)
 
     world_filename = (
         world_files[world_name]
@@ -152,17 +161,36 @@ def _launch_setup(context, *args, **kwargs):
     )
     world_file = os.path.join(pkg_sim, 'worlds', world_filename)
     bridge_config = os.path.join(pkg_sim, 'config', 'ros_gz_bridge.yaml')
-    xacro_file = os.path.join(pkg_desc, 'urdf', 'go2w_nav_eq.urdf.xacro')
-    controller_yaml = os.path.join(pkg_control, 'config', 'go2w_controllers.yaml')
+    wheeled_xacro_file = os.path.join(pkg_desc, 'urdf', 'go2w_nav_eq.urdf.xacro')
+    wheeled_controller_yaml = os.path.join(pkg_control, 'config', 'go2w_controllers.yaml')
+    go2_xacro_file = os.path.join(
+        pkg_go2_desc,
+        'urdf',
+        'unitree_go2_robot.xacro',
+    )
+    go2_controller_yaml = os.path.join(
+        pkg_go2_sim,
+        'config',
+        'ros_control',
+        'ros_control.yaml',
+    )
     rviz_config = os.path.join(pkg_desc, 'rviz', 'model.rviz')
 
-    robot_description = xacro.process_file(
-        xacro_file,
-        mappings={
-            'controller_config': controller_yaml,
-            'visual_profile': robot_visual_profile,
-        },
-    ).toxml()
+    if robot_mobility_profile == 'legged_champ':
+        robot_name = 'unitree_go2_legged'
+        robot_description = xacro.process_file(
+            go2_xacro_file,
+            mappings={'robot_controllers': go2_controller_yaml},
+        ).toxml()
+    else:
+        robot_name = 'go2w_nav_eq'
+        robot_description = xacro.process_file(
+            wheeled_xacro_file,
+            mappings={
+                'controller_config': wheeled_controller_yaml,
+                'visual_profile': robot_visual_profile,
+            },
+        ).toxml()
 
     bridge_specs = []
     bridge_remaps = []
@@ -198,15 +226,19 @@ def _launch_setup(context, *args, **kwargs):
         os.environ.get('GZ_SIM_RESOURCE_PATH', ''),
         pkg_sim,
         pkg_desc,
+        pkg_go2_desc,
         os.path.dirname(pkg_sim),
         os.path.dirname(pkg_desc),
+        os.path.dirname(pkg_go2_desc),
     )
     ign_resource_path = _resource_path_with(
         os.environ.get('IGN_GAZEBO_RESOURCE_PATH', ''),
         pkg_sim,
         pkg_desc,
+        pkg_go2_desc,
         os.path.dirname(pkg_sim),
         os.path.dirname(pkg_desc),
+        os.path.dirname(pkg_go2_desc),
     )
 
     spawn_open_source_building = Node(
@@ -246,7 +278,7 @@ def _launch_setup(context, *args, **kwargs):
         executable='create',
         output='screen',
         arguments=[
-            '-name', 'go2w_nav_eq',
+            '-name', robot_name,
             '-param', 'robot_description',
             '-x', robot_spawn_x,
             '-y', robot_spawn_y,
@@ -269,6 +301,53 @@ def _launch_setup(context, *args, **kwargs):
         PythonLaunchDescriptionSource(
             os.path.join(pkg_control, 'launch', 'control.launch.py')
         ),
+        launch_arguments={
+            'robot_mobility_profile': robot_mobility_profile,
+        }.items(),
+    )
+
+    go2_joints_config = os.path.join(pkg_go2_sim, 'config', 'joints', 'joints.yaml')
+    go2_links_config = os.path.join(pkg_go2_sim, 'config', 'links', 'links.yaml')
+    go2_gait_config = os.path.join(pkg_go2_sim, 'config', 'gait', 'gait.yaml')
+    legged_quadruped_controller = Node(
+        condition=IfCondition(LaunchConfiguration('legged_champ_controller')),
+        package='champ_base',
+        executable='quadruped_controller_node',
+        output='screen',
+        parameters=[
+            {'use_sim_time': True},
+            {'gazebo': True},
+            {'publish_joint_states': True},
+            {'publish_joint_control': True},
+            {'publish_foot_contacts': False},
+            {
+                'joint_controller_topic': (
+                    'joint_group_effort_controller/joint_trajectory'
+                )
+            },
+            {'urdf': robot_description},
+            go2_joints_config,
+            go2_links_config,
+            go2_gait_config,
+            {'hardware_connected': False},
+            {'close_loop_odom': True},
+        ],
+        remappings=[('/cmd_vel/smooth', legged_cmd_vel_topic)],
+    )
+
+    legged_state_estimator = Node(
+        condition=IfCondition(LaunchConfiguration('legged_champ_controller')),
+        package='champ_base',
+        executable='state_estimation_node',
+        output='screen',
+        parameters=[
+            {'use_sim_time': True},
+            {'orientation_from_imu': True},
+            {'urdf': robot_description},
+            go2_joints_config,
+            go2_links_config,
+            go2_gait_config,
+        ],
     )
 
     scan_emulator = Node(
@@ -421,6 +500,14 @@ def _launch_setup(context, *args, **kwargs):
         TimerAction(period=3.0, actions=[bridge]),
         TimerAction(period=4.0, actions=[control]),
         TimerAction(
+            period=5.0,
+            actions=(
+                [legged_quadruped_controller, legged_state_estimator]
+                if robot_mobility_profile == 'legged_champ'
+                else []
+            ),
+        ),
+        TimerAction(
             period=6.0,
             actions=delayed_sensor_nodes,
         ),
@@ -438,6 +525,9 @@ def generate_launch_description():
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
+        DeclareLaunchArgument('robot_mobility_profile', default_value='legged_champ'),
+        DeclareLaunchArgument('legged_champ_controller', default_value='true'),
+        DeclareLaunchArgument('legged_cmd_vel_topic', default_value='/cmd_vel_champ'),
         DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
         DeclareLaunchArgument('dynamic_obstacle_seed', default_value='0'),
         DeclareLaunchArgument('pointcloud', default_value='true'),
@@ -448,7 +538,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),
-        DeclareLaunchArgument('robot_spawn_z', default_value='0.26'),
+        DeclareLaunchArgument('robot_spawn_z', default_value='0.375'),
         DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0'),
         OpaqueFunction(function=_launch_setup),
     ])
