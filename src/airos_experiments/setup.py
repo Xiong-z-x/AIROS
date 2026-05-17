@@ -44,7 +44,6 @@ setup(
             'generate_world_map = airos_experiments.world_map_generator:main',
             'fast_lio_map_aligner = airos_experiments.fast_lio_map_aligner:main',
             'fast_lio_localization_bridge = airos_experiments.fast_lio_localization_bridge:main',
-            'dynamic_joint_state_relay = airos_experiments.dynamic_joint_state_relay:main',
             'generate_advanced_planner_candidates = '
             'airos_experiments.advanced_planner_candidate:main',
             'cross_level_evidence_probe = '

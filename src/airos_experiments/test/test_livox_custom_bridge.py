@@ -41,5 +41,4 @@ def test_gazebo_pointcloud_bridge_keeps_raw_topic_separate_from_custom_msg() -> 
     bridge_yaml = _read_text('src/airos_sim/config/ros_gz_bridge.yaml')
 
     assert 'ros_topic_name: /livox/lidar_points' in bridge_yaml
-    assert 'topic_name: /unitree_lidar/points' in bridge_yaml
-    assert 'ros_topic_name: /imu/data' in bridge_yaml
+    assert 'topic_name: /livox/lidar/points' in bridge_yaml

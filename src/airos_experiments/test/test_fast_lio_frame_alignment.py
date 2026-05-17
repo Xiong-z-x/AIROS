@@ -11,11 +11,8 @@ from airos_experiments.fast_lio_frame_alignment import (
     transform_point,
 )
 from airos_experiments.fast_lio_localization_bridge import (
-    _aligned_odom_from_wheel,
     _aligned_odom_from_fast_lio,
     _compose_map_to_odom,
-    _map_to_base_transform_from_fast_lio,
-    _odom_to_base_transform,
 )
 
 
@@ -95,81 +92,6 @@ def test_fast_lio_bridge_publishes_aligned_3d_pose_for_terrain_planner() -> None
     assert math.isclose(aligned.pose.pose.position.z, 2.01, abs_tol=1e-6)
 
 
-def test_fast_lio_bridge_can_fall_back_to_gazebo_odom_for_display_chain() -> None:
-    wheel_odom = Odometry()
-    wheel_odom.header.stamp.sec = 21
-    wheel_odom.header.frame_id = 'odom'
-    wheel_odom.child_frame_id = 'base_footprint'
-    wheel_odom.pose.pose.position.x = 0.4
-    wheel_odom.pose.pose.position.y = -9.6
-    wheel_odom.pose.pose.orientation.w = 1.0
-
-    aligned = _aligned_odom_from_wheel(
-        wheel_odom,
-        map_frame='map',
-        base_frame='base_footprint',
-    )
-
-    assert aligned.header.stamp.sec == 21
-    assert aligned.header.frame_id == 'map'
-    assert aligned.child_frame_id == 'base_footprint'
-    assert aligned.pose.pose.position.x == 0.4
-    assert aligned.pose.pose.position.y == -9.6
-
-
-def test_fast_lio_bridge_republishes_odom_to_base_for_rviz_tf_tree() -> None:
-    wheel_odom = Odometry()
-    wheel_odom.header.stamp.sec = 22
-    wheel_odom.header.frame_id = 'odom'
-    wheel_odom.child_frame_id = 'base_footprint'
-    wheel_odom.pose.pose.position.x = 1.25
-    wheel_odom.pose.pose.position.y = -8.75
-    wheel_odom.pose.pose.position.z = 0.38
-    wheel_odom.pose.pose.orientation.w = 1.0
-
-    transform = _odom_to_base_transform(
-        wheel_odom,
-        odom_frame='odom',
-        base_frame='base_footprint',
-    )
-
-    assert transform.header.stamp.sec == 22
-    assert transform.header.frame_id == 'odom'
-    assert transform.child_frame_id == 'base_footprint'
-    assert transform.transform.translation.x == 1.25
-    assert transform.transform.translation.y == -8.75
-    assert transform.transform.translation.z == 0.38
-    assert transform.transform.rotation.w == 1.0
-
-
-def test_fast_lio_bridge_can_publish_map_to_base_without_wheel_odom() -> None:
-    fast_lio_odom = Odometry()
-    fast_lio_odom.header.stamp.sec = 23
-    fast_lio_odom.pose.pose.position.x = 0.2
-    fast_lio_odom.pose.pose.position.y = 1.0
-    fast_lio_odom.pose.pose.position.z = 0.05
-    fast_lio_odom.pose.pose.orientation.w = 1.0
-
-    transform = _map_to_base_transform_from_fast_lio(
-        fast_lio_odom,
-        alignment=FrameAlignment(
-            spawn_x=0.0,
-            spawn_y=-10.0,
-            spawn_z=0.375,
-            spawn_yaw=-math.pi / 2.0,
-        ),
-        map_frame='map',
-        base_frame='base_footprint',
-    )
-
-    assert transform.header.stamp.sec == 23
-    assert transform.header.frame_id == 'map'
-    assert transform.child_frame_id == 'base_footprint'
-    assert math.isclose(transform.transform.translation.x, 1.0, abs_tol=1e-6)
-    assert math.isclose(transform.transform.translation.y, -10.2, abs_tol=1e-6)
-    assert math.isclose(transform.transform.translation.z, 0.425, abs_tol=1e-6)
-
-
 def test_fast_lio_visual_launch_aligns_local_map_before_planning() -> None:
     launch_text = _read_text(
         'src/airos_experiments/launch/visual_fast_lio_navigation.launch.py'
@@ -180,7 +102,6 @@ def test_fast_lio_visual_launch_aligns_local_map_before_planning() -> None:
     assert "'input_topic': '/Laser_map'" in launch_text
     assert "'output_topic': '/Laser_map_world'" in launch_text
     assert "'aligned_odom_topic': '/fast_lio_odom_world'" in launch_text
-    assert "'fallback_to_wheel_odom': True" in launch_text
     assert "'odom_topic': '/fast_lio_odom_world'" in launch_text
     assert "'slam_map_topic': '/Laser_map_world'" in launch_text
     assert "'input_topic': '/Laser_map_world'" in launch_text

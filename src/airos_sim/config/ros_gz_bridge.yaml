@@ -8,12 +8,6 @@
   gz_type_name: gz.msgs.IMU
   direction: GZ_TO_ROS
 
-- topic_name: /imu/data
-  ros_topic_name: /imu/data
-  ros_type_name: sensor_msgs/msg/Imu
-  gz_type_name: gz.msgs.IMU
-  direction: GZ_TO_ROS
-
 - topic_name: /scan
   ros_type_name: sensor_msgs/msg/LaserScan
   gz_type_name: ignition.msgs.LaserScan

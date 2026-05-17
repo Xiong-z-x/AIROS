@@ -438,18 +438,6 @@ def _launch_setup(context, *args, **kwargs):
         }],
     )
 
-    joint_state_relay = Node(
-        condition=IfCondition(LaunchConfiguration('legged_champ_controller')),
-        package='airos_experiments',
-        executable='dynamic_joint_state_relay',
-        output='screen',
-        parameters=[{
-            'use_sim_time': True,
-            'input_topic': '/dynamic_joint_states',
-            'output_topic': '/joint_states',
-        }],
-    )
-
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -470,8 +458,6 @@ def _launch_setup(context, *args, **kwargs):
         delayed_sensor_nodes.append(livox_custom_bridge)
     if pointcloud_enabled:
         delayed_sensor_nodes.append(livox_imu_relay)
-    if robot_mobility_profile == 'legged_champ':
-        delayed_sensor_nodes.append(joint_state_relay)
 
     dynamic_obstacle_triggers = []
     if physical_dynamic_obstacles:
