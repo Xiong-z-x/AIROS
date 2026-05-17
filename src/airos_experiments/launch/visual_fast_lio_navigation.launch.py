@@ -10,8 +10,18 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+
+
+def _fast_lio_localization_enabled() -> PythonExpression:
+    return PythonExpression([
+        "'",
+        LaunchConfiguration('fast_lio_debug'),
+        "'.lower() == 'true' and '",
+        LaunchConfiguration('localization'),
+        "' != 'slam_toolbox_mapping'",
+    ])
 
 
 def generate_launch_description():
@@ -125,6 +135,7 @@ def generate_launch_description():
             'external_map_manager': 'false',
             'localization': LaunchConfiguration('localization'),
             'log_level': LaunchConfiguration('log_level'),
+            'slam_nav_startup': LaunchConfiguration('slam_nav_startup'),
         },
         actions=[
             IncludeLaunchDescription(
@@ -355,7 +366,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('use_route', default_value='false'),
         DeclareLaunchArgument('planner_profile', default_value='research'),
-        DeclareLaunchArgument('localization', default_value='static'),
+        DeclareLaunchArgument('localization', default_value='slam_toolbox_mapping'),
+        DeclareLaunchArgument('slam_nav_startup', default_value='gated'),
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
@@ -406,7 +418,7 @@ def generate_launch_description():
         TimerAction(
             period=13.0,
             actions=[fast_lio_localization_bridge],
-            condition=IfCondition(LaunchConfiguration('fast_lio_debug')),
+            condition=IfCondition(_fast_lio_localization_enabled()),
         ),
         TimerAction(period=15.0, actions=[nav]),
         TimerAction(

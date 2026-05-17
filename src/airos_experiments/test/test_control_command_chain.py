@@ -49,6 +49,33 @@ def test_nav_launch_can_run_controller_only_for_pct_execution() -> None:
     assert "condition=IfCondition(_full_stack_enabled(nav_stack_mode))" in launch_text
 
 
+def test_slam_mapping_nav2_startup_is_gated_until_map_is_usable() -> None:
+    launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
+    coordinator_source = _read_text(
+        'src/airos_experiments/airos_experiments/slam_nav_coordinator.py'
+    )
+    setup_py = _read_text('src/airos_experiments/setup.py')
+
+    assert "DeclareLaunchArgument('slam_nav_startup', default_value='gated')" in launch_text
+    assert "executable='slam_nav_coordinator'" in launch_text
+    assert 'nav_lifecycle_autostart = autostart_value and not (' in launch_text
+    assert "localization_value == 'slam_toolbox_mapping'" in launch_text
+    assert "slam_nav_startup_value == 'gated'" in launch_text
+    assert "'autostart': nav_lifecycle_autostart" in launch_text
+    assert "'navigation_manager_service': (" in launch_text
+    assert "'/lifecycle_manager_navigation/manage_nodes'" in launch_text
+    assert "'collision_manager_service': (" in launch_text
+    assert "'/lifecycle_manager_collision_monitor/manage_nodes'" in launch_text
+
+    assert 'class SlamNavCoordinator' in coordinator_source
+    assert 'OccupancyGrid' in coordinator_source
+    assert 'lookup_transform(' in coordinator_source
+    assert '_occupancy_grid_bounds' in coordinator_source
+    assert 'ManageLifecycleNodes.Request.STARTUP' in coordinator_source
+    assert 'map_edge_margin_m' in coordinator_source
+    assert 'slam_nav_coordinator = airos_experiments.slam_nav_coordinator:main' in setup_py
+
+
 def test_lifecycle_activator_retries_service_availability() -> None:
     source = _read_text(
         'src/airos_experiments/airos_experiments/lifecycle_activator.py'

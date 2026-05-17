@@ -29,7 +29,14 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "'pointcloud_registered': 'false'" in launch_text
     assert "'pointcloud_map': 'false'" in launch_text
     assert "'localization': LaunchConfiguration('localization')" in launch_text
-    assert "DeclareLaunchArgument('localization', default_value='static')" in launch_text
+    assert (
+        "DeclareLaunchArgument('localization', default_value='slam_toolbox_mapping')"
+        in launch_text
+    )
+    assert "DeclareLaunchArgument('slam_nav_startup', default_value='gated')" in launch_text
+    assert 'def _fast_lio_localization_enabled()' in launch_text
+    assert "' != 'slam_toolbox_mapping'" in launch_text
+    assert 'condition=IfCondition(_fast_lio_localization_enabled())' in launch_text
     assert "DeclareLaunchArgument('fast_lio_debug', default_value='true')" in launch_text
     assert "executable='fast_lio_localization_bridge'" in launch_text
     assert "'fast_lio_odom_topic': '/Odometry'" in launch_text
@@ -500,13 +507,20 @@ def test_nav2_planner_defaults_to_smac2d_for_single_floor() -> None:
     nav_params = yaml.safe_load(
         _read_text('src/airos_nav/config/nav2_params.yaml')
     )
+    bt_params = nav_params['bt_navigator']['ros__parameters']
     grid_based = nav_params['planner_server']['ros__parameters']['GridBased']
     global_costmap = nav_params['global_costmap']['global_costmap']['ros__parameters']
+    static_layer = global_costmap['static_layer']
 
+    assert bt_params['bt_loop_duration'] == 50
+    assert bt_params['default_server_timeout'] == 1000
+    assert bt_params['default_cancel_timeout'] == 1000
     assert grid_based['plugin'] == 'nav2_smac_planner/SmacPlanner2D'
     assert grid_based['allow_unknown'] is True
     assert grid_based['use_final_approach_orientation'] is False
     assert global_costmap['track_unknown_space'] is False
+    assert static_layer['map_subscribe_transient_local'] is True
+    assert static_layer['subscribe_to_updates'] is True
 
 
 def test_airos_nav_depends_on_mppi_and_smac_planner() -> None:

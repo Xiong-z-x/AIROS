@@ -63,6 +63,22 @@ def _safety_only_enabled(nav_stack_mode: LaunchConfiguration) -> PythonExpressio
     return PythonExpression(["'", nav_stack_mode, "' == 'safety_only'"])
 
 
+def _slam_nav_coordinator_enabled(
+    localization: LaunchConfiguration,
+    slam_nav_startup: LaunchConfiguration,
+    nav_stack_mode: LaunchConfiguration,
+) -> PythonExpression:
+    return PythonExpression([
+        "'",
+        localization,
+        "' == 'slam_toolbox_mapping' and '",
+        slam_nav_startup,
+        "' == 'gated' and '",
+        nav_stack_mode,
+        "' == 'full'",
+    ])
+
+
 def _launch_setup(context, *args, **kwargs):
     pkg_nav = get_package_share_directory('airos_nav')
     pkg_slam = get_package_share_directory('airos_slam')
@@ -82,6 +98,7 @@ def _launch_setup(context, *args, **kwargs):
     route_graph = LaunchConfiguration('route_graph')
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
+    autostart_value = autostart.perform(context).lower() == 'true'
     use_rviz = LaunchConfiguration('rviz')
     localization = LaunchConfiguration('localization')
     use_route = LaunchConfiguration('use_route')
@@ -95,6 +112,18 @@ def _launch_setup(context, *args, **kwargs):
         )
     log_level = LaunchConfiguration('log_level')
     collision_scan_topic = LaunchConfiguration('collision_scan_topic')
+    slam_nav_startup = LaunchConfiguration('slam_nav_startup')
+    slam_nav_startup_value = slam_nav_startup.perform(context)
+    if slam_nav_startup_value not in {'autostart', 'gated'}:
+        raise RuntimeError(
+            "slam_nav_startup must be 'autostart' or 'gated', "
+            f"got {slam_nav_startup_value!r}"
+        )
+    localization_value = localization.perform(context)
+    nav_lifecycle_autostart = autostart_value and not (
+        localization_value == 'slam_toolbox_mapping'
+        and slam_nav_startup_value == 'gated'
+    )
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -317,11 +346,41 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             parameters=[
                 {'use_sim_time': use_sim_time},
-                {'autostart': autostart},
+                {'autostart': nav_lifecycle_autostart},
                 {'node_names': navigation_lifecycle_nodes},
             ],
         ),
     ])
+
+    slam_nav_coordinator = Node(
+        condition=IfCondition(
+            _slam_nav_coordinator_enabled(
+                localization,
+                slam_nav_startup,
+                nav_stack_mode,
+            )
+        ),
+        package='airos_experiments',
+        executable='slam_nav_coordinator',
+        name='slam_nav_coordinator',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'map_topic': '/map',
+            'map_frame': 'map',
+            'robot_frame': 'base_footprint',
+            'navigation_manager_service': (
+                '/lifecycle_manager_navigation/manage_nodes'
+            ),
+            'collision_manager_service': (
+                '/lifecycle_manager_collision_monitor/manage_nodes'
+            ),
+            'startup_timeout_sec': 45.0,
+            'poll_period_sec': 0.5,
+            'map_edge_margin_m': 0.35,
+            'min_map_cells': 100,
+        }],
+    )
 
     controller_only_activator = Node(
         condition=IfCondition(_controller_only_enabled(nav_stack_mode)),
@@ -376,7 +435,7 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             parameters=[
                 {'use_sim_time': use_sim_time},
-                {'autostart': autostart},
+                {'autostart': nav_lifecycle_autostart},
                 {'node_names': ['collision_monitor']},
             ],
         ),
@@ -433,6 +492,7 @@ def _launch_setup(context, *args, **kwargs):
         static_map_manager,
         external_localization_map_manager,
         navigation_nodes,
+        slam_nav_coordinator,
         controller_only_activator,
         safety_only_activator,
         collision_monitor,
@@ -477,6 +537,7 @@ def generate_launch_description():
         DeclareLaunchArgument('localization', default_value='amcl'),
         DeclareLaunchArgument('use_route', default_value='false'),
         DeclareLaunchArgument('nav_stack_mode', default_value='full'),
+        DeclareLaunchArgument('slam_nav_startup', default_value='gated'),
         DeclareLaunchArgument('external_map_manager', default_value='true'),
         DeclareLaunchArgument('collision_scan_topic', default_value='/scan'),
         DeclareLaunchArgument('log_level', default_value='info'),
