@@ -153,6 +153,7 @@ def _launch_setup(context, *args, **kwargs):
     robot_spawn_z = LaunchConfiguration('robot_spawn_z').perform(context)
     robot_spawn_yaw = LaunchConfiguration('robot_spawn_yaw').perform(context)
     legged_cmd_vel_topic = LaunchConfiguration('legged_cmd_vel_topic').perform(context)
+    imu_input_topic = '/imu/data' if robot_mobility_profile == 'legged_champ' else '/imu'
 
     world_filename = (
         world_files[world_name]
@@ -418,7 +419,7 @@ def _launch_setup(context, *args, **kwargs):
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'input_topic': '/imu',
+            'input_topic': imu_input_topic,
             'output_topic': '/livox/imu',
             'frame_id': 'livox_frame',
         }],

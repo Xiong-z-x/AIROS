@@ -13,7 +13,7 @@
   gz_type_name: ignition.msgs.LaserScan
   direction: GZ_TO_ROS
 
-- topic_name: /livox/lidar/points
+- topic_name: /unitree_lidar/points
   ros_topic_name: /livox/lidar_points
   ros_type_name: sensor_msgs/msg/PointCloud2
   gz_type_name: ignition.msgs.PointCloudPacked
