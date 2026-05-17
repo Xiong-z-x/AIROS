@@ -38,7 +38,7 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /robot_description
       Enabled: true
-      Name: Unitree Go2 RobotModel
+      Name: Go2W RobotModel
       TF Prefix: ""
       Update Interval: 0
       Value: true
@@ -307,7 +307,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 24; 26; 30
-    Fixed Frame: base_footprint
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
