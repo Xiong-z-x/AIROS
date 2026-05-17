@@ -34,7 +34,7 @@ def test_sim_launch_can_select_advanced_world_and_physical_obstacles() -> None:
     assert "physical_dynamic_obstacles" in launch_text
     assert "open_source_scene_assets" in launch_text
     assert "robot_visual_profile" in launch_text
-    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.375')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "dynamic_obstacle_marker_emulator" in launch_text
     assert "'scan_topic': '/scan_dynamic_overlay'" in launch_text
     assert "DeclareLaunchArgument('point_spacing', default_value='0.06')" in launch_text

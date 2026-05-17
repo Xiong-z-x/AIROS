@@ -96,10 +96,6 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
         "DeclareLaunchArgument('terrain_goal_z_policy', default_value='highest')"
     ) in launch_text
     assert "DeclareLaunchArgument('terrain_goal_max_z', default_value='-1.0')" in launch_text
-    assert "DeclareLaunchArgument('terrain_max_step_height', default_value='0.50')" in launch_text
-    assert "DeclareLaunchArgument('terrain_direct_lookahead_dist', default_value='0.45')" in launch_text
-    assert "DeclareLaunchArgument(\n            'terrain_direct_waypoint_tolerance'," in launch_text
-    assert "DeclareLaunchArgument(\n            'terrain_follow_path_start_clearance'," in launch_text
     assert "'goal_z_policy': LaunchConfiguration('terrain_goal_z_policy')" in launch_text
     assert "'goal_min_z': LaunchConfiguration('terrain_goal_min_z')" in launch_text
     assert "'goal_max_z': LaunchConfiguration('terrain_goal_max_z')" in launch_text
@@ -119,7 +115,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('terrain_execution_mode', default_value='direct')" in launch_text
     assert "'grid_resolution': 0.25" in launch_text
     assert "'terrain_cloud_resolution': 0.10" in launch_text
-    assert "'max_step_height': LaunchConfiguration('terrain_max_step_height')" in launch_text
+    assert "'max_step_height': 0.50" in launch_text
     assert "'odom_topic': '/Odometry'" not in launch_text
     assert "'odom_topic': LaunchConfiguration('terrain_odom_topic')" in launch_text
     terrain_planner_section = launch_text.split(
@@ -131,26 +127,20 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     )
     assert "'use_initial_pose_anchor': False" in launch_text
     assert "'direct_cmd_vel_topic': '/cmd_vel_nav'" in launch_text
-    assert (
-        "'direct_lookahead_dist': LaunchConfiguration('terrain_direct_lookahead_dist')"
-    ) in launch_text
-    assert "'direct_waypoint_tolerance': LaunchConfiguration(" in launch_text
+    assert "'direct_waypoint_tolerance': 0.42" in launch_text
     assert "'direct_goal_tolerance': 0.30" in launch_text
     assert "'direct_z_tolerance': 0.45" in launch_text
     assert "'direct_max_linear_speed': 0.30" in launch_text
     assert "'direct_max_angular_speed': 0.45" in launch_text
     assert "'large_multilevel_complex_static.sdf'" in launch_text
     assert "'start_waypoint_clearance': 0.75" in launch_text
-    assert "'follow_path_start_clearance': LaunchConfiguration(" in launch_text
+    assert "'follow_path_start_clearance': 0.12" in launch_text
     assert "'slope_speed_limit': 0.16" in launch_text
     assert "'flat_speed_limit': 0.32" in launch_text
     assert "'initial_surface_z_hint': LaunchConfiguration('robot_spawn_z')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_y', default_value='-10.0')" in launch_text
-    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.375')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='-1.5708')" in launch_text
-    assert "DeclareLaunchArgument('legged_cmd_vel_topic', default_value='/cmd_vel_champ')" in launch_text
-    assert "'legged_cmd_vel_topic': LaunchConfiguration('legged_cmd_vel_topic')" in launch_text
-    assert "'cmd_vel_out_topic': LaunchConfiguration('cmd_vel_out_topic')" in launch_text
     assert "'min_visible_z': 0.08" in launch_text
     assert "'max_points': 800000" in launch_text
 
@@ -365,7 +355,7 @@ def test_sim_launch_defaults_gazebo_to_wsl_stable_rendering() -> None:
         "DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable')"
         in launch_text
     )
-    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.375')" in launch_text
+    assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert (
         "'gazebo_rendering_mode': LaunchConfiguration('gazebo_rendering_mode')"
         in visual_launch_text

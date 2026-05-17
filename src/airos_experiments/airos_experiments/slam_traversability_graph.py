@@ -555,7 +555,6 @@ def _add_sparse_slope_bridges(
                 other,
                 grid_resolution=grid_resolution,
                 max_slope_grade=max_slope_grade,
-                max_step_height=max_step_height,
                 max_surface_transition_height=max_surface_transition_height,
                 obstacle_bins=obstacle_bins,
                 obstacle_clearance=obstacle_clearance,
@@ -570,7 +569,6 @@ def _add_sparse_slope_bridges(
         bins,
         grid_resolution=grid_resolution,
         max_slope_grade=max_slope_grade,
-        max_step_height=max_step_height,
         max_surface_transition_height=max_surface_transition_height,
         obstacle_bins=obstacle_bins,
         obstacle_clearance=obstacle_clearance,
@@ -585,7 +583,6 @@ def _add_component_sparse_step_bridges(
     *,
     grid_resolution: float,
     max_slope_grade: float,
-    max_step_height: float,
     max_surface_transition_height: float,
     obstacle_bins: dict[tuple[int, int], tuple[float, float]],
     obstacle_clearance: float,
@@ -635,7 +632,6 @@ def _add_component_sparse_step_bridges(
             nodes[second_index],
             grid_resolution=grid_resolution,
             max_slope_grade=max_slope_grade,
-            max_step_height=max_step_height,
             max_surface_transition_height=max_surface_transition_height,
             obstacle_bins=obstacle_bins,
             obstacle_clearance=obstacle_clearance,
@@ -673,7 +669,6 @@ def _sparse_slope_bridge_cost(
     *,
     grid_resolution: float,
     max_slope_grade: float,
-    max_step_height: float,
     max_surface_transition_height: float,
     obstacle_bins: dict[tuple[int, int], tuple[float, float]],
     obstacle_clearance: float,
@@ -683,8 +678,6 @@ def _sparse_slope_bridge_cost(
         return None
     dz = abs(other.z - node.z)
     grade = dz / max(horizontal, 1e-6)
-    if max_step_height <= 0.12 and dz > max_step_height:
-        return None
     if grade > max_slope_grade:
         return None
     if not _sparse_bridge_uses_vertical_structure(

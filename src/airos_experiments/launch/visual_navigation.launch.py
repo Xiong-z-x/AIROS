@@ -123,7 +123,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
         DeclareLaunchArgument('robot_spawn_y', default_value='0.0'),
-        DeclareLaunchArgument('robot_spawn_z', default_value='0.375'),
+        DeclareLaunchArgument('robot_spawn_z', default_value='0.26'),
         DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0'),
         sim,
         TimerAction(period=10.0, actions=[nav]),
