@@ -152,6 +152,7 @@ def generate_launch_description():
             'aligned_odom_topic': '/fast_lio_odom_world',
             'publish_rate_hz': 20.0,
             'max_source_age_sec': 0.8,
+            'fallback_to_wheel_odom': True,
             'spawn_x': LaunchConfiguration('robot_spawn_x'),
             'spawn_y': LaunchConfiguration('robot_spawn_y'),
             'spawn_z': LaunchConfiguration('robot_spawn_z'),

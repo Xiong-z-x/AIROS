@@ -113,6 +113,62 @@ def _aligned_odom_from_fast_lio(
     return aligned
 
 
+def _aligned_odom_from_wheel(
+    msg: Odometry,
+    *,
+    map_frame: str,
+    base_frame: str,
+) -> Odometry:
+    aligned = Odometry()
+    aligned.header.stamp = msg.header.stamp
+    aligned.header.frame_id = map_frame
+    aligned.child_frame_id = base_frame
+    aligned.pose = msg.pose
+    aligned.twist = msg.twist
+    return aligned
+
+
+def _odom_to_base_transform(
+    msg: Odometry,
+    *,
+    odom_frame: str,
+    base_frame: str,
+) -> TransformStamped:
+    transform = TransformStamped()
+    transform.header.stamp = msg.header.stamp
+    transform.header.frame_id = odom_frame
+    transform.child_frame_id = base_frame
+    transform.transform.translation.x = float(msg.pose.pose.position.x)
+    transform.transform.translation.y = float(msg.pose.pose.position.y)
+    transform.transform.translation.z = float(msg.pose.pose.position.z)
+    transform.transform.rotation = msg.pose.pose.orientation
+    return transform
+
+
+def _map_to_base_transform_from_fast_lio(
+    msg: Odometry,
+    *,
+    alignment: FrameAlignment,
+    map_frame: str,
+    base_frame: str,
+) -> TransformStamped:
+    aligned = _aligned_odom_from_fast_lio(
+        msg,
+        alignment=alignment,
+        map_frame=map_frame,
+        base_frame=base_frame,
+    )
+    transform = TransformStamped()
+    transform.header.stamp = aligned.header.stamp
+    transform.header.frame_id = map_frame
+    transform.child_frame_id = base_frame
+    transform.transform.translation.x = float(aligned.pose.pose.position.x)
+    transform.transform.translation.y = float(aligned.pose.pose.position.y)
+    transform.transform.translation.z = float(aligned.pose.pose.position.z)
+    transform.transform.rotation = aligned.pose.pose.orientation
+    return transform
+
+
 class FastLioLocalizationBridge(Node):
     def __init__(self) -> None:
         super().__init__('fast_lio_localization_bridge')
@@ -125,6 +181,7 @@ class FastLioLocalizationBridge(Node):
         self.declare_parameter('aligned_odom_topic', '/fast_lio_odom_world')
         self.declare_parameter('publish_rate_hz', 20.0)
         self.declare_parameter('max_source_age_sec', 0.8)
+        self.declare_parameter('fallback_to_wheel_odom', True)
         self.declare_parameter('spawn_x', 0.0)
         self.declare_parameter('spawn_y', 0.0)
         self.declare_parameter('spawn_z', 0.0)
@@ -136,6 +193,9 @@ class FastLioLocalizationBridge(Node):
         self._max_source_age_ns = int(
             float(self.get_parameter('max_source_age_sec').value)
             * 1_000_000_000
+        )
+        self._fallback_to_wheel_odom = bool(
+            self.get_parameter('fallback_to_wheel_odom').value
         )
         self._alignment = FrameAlignment(
             spawn_x=float(self.get_parameter('spawn_x').value),
@@ -180,7 +240,8 @@ class FastLioLocalizationBridge(Node):
             f'{self.get_parameter("fast_lio_odom_topic").value} + '
             f'{self.get_parameter("wheel_odom_topic").value} -> '
             f'{self._map_frame}->{self._odom_frame}, '
-            f'aligned odom={self.get_parameter("aligned_odom_topic").value}'
+            f'aligned odom={self.get_parameter("aligned_odom_topic").value}, '
+            f'fallback_to_wheel_odom={self._fallback_to_wheel_odom}'
         )
 
     def destroy_node(self) -> bool:
@@ -210,8 +271,82 @@ class FastLioLocalizationBridge(Node):
             and self._stamp_age_ns(self._wheel_odom) <= self._max_source_age_ns
         )
 
+    def _wheel_odom_is_fresh(self) -> bool:
+        if self._wheel_odom is None:
+            return False
+        if self._max_source_age_ns <= 0:
+            return True
+        return self._stamp_age_ns(self._wheel_odom) <= self._max_source_age_ns
+
+    def _fast_lio_odom_is_fresh(self) -> bool:
+        if self._fast_lio_odom is None:
+            return False
+        if self._max_source_age_ns <= 0:
+            return True
+        return self._stamp_age_ns(self._fast_lio_odom) <= self._max_source_age_ns
+
+    def _publish_identity_map_to_odom(self) -> None:
+        transform = TransformStamped()
+        transform.header.stamp = self.get_clock().now().to_msg()
+        transform.header.frame_id = self._map_frame
+        transform.child_frame_id = self._odom_frame
+        transform.transform.translation.x = 0.0
+        transform.transform.translation.y = 0.0
+        transform.transform.translation.z = 0.0
+        transform.transform.rotation.x = 0.0
+        transform.transform.rotation.y = 0.0
+        transform.transform.rotation.z = 0.0
+        transform.transform.rotation.w = 1.0
+        self._tf_broadcaster.sendTransform(transform)
+
+    def _publish_odom_to_base(self) -> None:
+        if self._wheel_odom is None:
+            return
+        self._tf_broadcaster.sendTransform(
+            _odom_to_base_transform(
+                self._wheel_odom,
+                odom_frame=self._odom_frame,
+                base_frame=self._base_frame,
+            )
+        )
+
+    def _publish_fast_lio_map_to_base(self) -> None:
+        if self._fast_lio_odom is None:
+            return
+        self._tf_broadcaster.sendTransform(
+            _map_to_base_transform_from_fast_lio(
+                self._fast_lio_odom,
+                alignment=self._alignment,
+                map_frame=self._map_frame,
+                base_frame=self._base_frame,
+            )
+        )
+
     def _publish_map_to_odom(self) -> None:
         if not self._sources_are_fresh():
+            if self._fast_lio_odom_is_fresh():
+                assert self._fast_lio_odom is not None
+                self._publish_fast_lio_map_to_base()
+                self._aligned_odom_publisher.publish(
+                    _aligned_odom_from_fast_lio(
+                        self._fast_lio_odom,
+                        alignment=self._alignment,
+                        map_frame=self._map_frame,
+                        base_frame=self._base_frame,
+                    )
+                )
+                return
+            if self._fallback_to_wheel_odom and self._wheel_odom_is_fresh():
+                assert self._wheel_odom is not None
+                self._publish_identity_map_to_odom()
+                self._publish_odom_to_base()
+                self._aligned_odom_publisher.publish(
+                    _aligned_odom_from_wheel(
+                        self._wheel_odom,
+                        map_frame=self._map_frame,
+                        base_frame=self._base_frame,
+                    )
+                )
             return
         assert self._fast_lio_odom is not None
         assert self._wheel_odom is not None
@@ -237,6 +372,7 @@ class FastLioLocalizationBridge(Node):
         transform.transform.rotation.z = qz
         transform.transform.rotation.w = qw
         self._tf_broadcaster.sendTransform(transform)
+        self._publish_odom_to_base()
         self._aligned_odom_publisher.publish(
             _aligned_odom_from_fast_lio(
                 self._fast_lio_odom,

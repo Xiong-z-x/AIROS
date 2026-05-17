@@ -297,10 +297,16 @@ def test_bridge_exports_native_gazebo_scan_and_pointcloud() -> None:
     assert by_topic['/scan']['direction'] == 'GZ_TO_ROS'
 
     livox_cloud = by_ros_topic['/livox/lidar_points']
-    assert livox_cloud['topic_name'] == '/livox/lidar/points'
+    assert livox_cloud['topic_name'] == '/unitree_lidar/points'
     assert livox_cloud['ros_type_name'] == 'sensor_msgs/msg/PointCloud2'
     assert livox_cloud['gz_type_name'] == 'ignition.msgs.PointCloudPacked'
     assert livox_cloud['direction'] == 'GZ_TO_ROS'
+
+    legged_imu = by_ros_topic['/imu/data']
+    assert legged_imu['topic_name'] == '/imu/data'
+    assert legged_imu['ros_type_name'] == 'sensor_msgs/msg/Imu'
+    assert legged_imu['gz_type_name'] == 'gz.msgs.IMU'
+    assert legged_imu['direction'] == 'GZ_TO_ROS'
 
 
 def test_bridge_remaps_native_pointcloud_to_fast_lio_topic() -> None:
@@ -410,7 +416,7 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     dense_building_cloud = _rviz_display(
         'Dense Building Cloud /dense_visual_cloud'
     )
-    registered_cloud = _rviz_display('Registered Cloud /cloud_registered')
+    registered_cloud = _rviz_display('Registered Cloud /cloud_registered_world')
     livox_cloud = _rviz_display('Livox Raw Cloud /livox/lidar_points')
 
     assert laser_map['Enabled'] is False
@@ -448,17 +454,17 @@ def test_nav_rviz_prefers_colorized_map_and_single_frame_live_clouds() -> None:
     assert registered_cloud['Value'] is True
     assert registered_cloud['Color Transformer'] == 'AxisColor'
     assert registered_cloud['Style'] == 'Points'
+    assert registered_cloud['Topic']['Value'] == '/cloud_registered_world'
     assert registered_cloud['Size (Pixels)'] == 2
     assert registered_cloud['Size (m)'] == 0.02
     assert registered_cloud['Decay Time'] == 0
     assert registered_cloud['Topic']['Depth'] == 1
 
-    for live_cloud in (livox_cloud,):
-        assert live_cloud['Enabled'] is False
-        assert live_cloud['Value'] is False
-        assert live_cloud['Style'] == 'Points'
-        assert live_cloud['Decay Time'] == 0
-        assert live_cloud['Topic']['Depth'] == 1
+    assert livox_cloud['Enabled'] is True
+    assert livox_cloud['Value'] is True
+    assert livox_cloud['Style'] == 'Points'
+    assert livox_cloud['Decay Time'] == 0
+    assert livox_cloud['Topic']['Depth'] == 1
 
 
 def test_nav_rviz_shows_terrain_path_and_hides_dynamic_obstacles_by_default() -> None:
@@ -523,6 +529,8 @@ def test_fast_lio_sim_extrinsic_matches_republished_livox_imu_frame() -> None:
     sim_launch = _read_text('src/airos_sim/launch/sim.launch.py')
 
     assert "'output_topic': '/livox/imu'" in sim_launch
+    assert "imu_input_topic = '/imu/data' if robot_mobility_profile == 'legged_champ' else '/imu'" in sim_launch
+    assert "'input_topic': imu_input_topic" in sim_launch
     assert "'frame_id': 'livox_frame'" in sim_launch
     assert fast_lio_params['common']['imu_topic'] == '/livox/imu'
     assert fast_lio_params['mapping']['extrinsic_est_en'] is False
