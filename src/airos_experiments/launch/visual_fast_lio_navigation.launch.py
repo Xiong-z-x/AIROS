@@ -374,7 +374,7 @@ def generate_launch_description():
         DeclareLaunchArgument('dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('physical_dynamic_obstacles', default_value='false'),
         DeclareLaunchArgument('open_source_scene_assets', default_value='false'),
-        DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
+        DeclareLaunchArgument('robot_visual_profile', default_value='reference_mesh'),
         DeclareLaunchArgument('log_level', default_value='warn'),
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),

@@ -305,7 +305,7 @@ def generate_launch_description():
                 'single_floor_planner_showcase.yaml',
             ),
         ),
-        DeclareLaunchArgument('robot_visual_profile', default_value='analytic'),
+        DeclareLaunchArgument('robot_visual_profile', default_value='reference_mesh'),
         DeclareLaunchArgument('sensor_source', default_value='native'),
         DeclareLaunchArgument('gazebo_rendering_mode', default_value='wsl_stable'),
         DeclareLaunchArgument('robot_spawn_x', default_value='0.0'),
