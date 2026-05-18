@@ -11,9 +11,9 @@ from dataclasses import dataclass
 import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import ComputePathToPose
+from nav2_msgs.action import ComputePathToPose, NavigateToPose
 from nav_msgs.msg import OccupancyGrid, Path
-from rclpy.action import ActionClient
+from rclpy.action import ActionClient, ActionServer
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -196,6 +196,7 @@ class PlannerComparisonNode(Node):
         self.declare_parameter('path_animation_rate_hz', 14.0)
         self.declare_parameter('path_animation_spacing_m', 0.12)
         self.declare_parameter('path_animation_points_per_tick', 3)
+        self.declare_parameter('enable_navigate_to_pose_bridge', True)
 
         self._map: GridMap | None = None
         self._tf_buffer = Buffer()
@@ -205,6 +206,14 @@ class PlannerComparisonNode(Node):
             ComputePathToPose,
             'compute_path_to_pose',
         )
+        self._navigate_server: ActionServer | None = None
+        if bool(self.get_parameter('enable_navigate_to_pose_bridge').value):
+            self._navigate_server = ActionServer(
+                self,
+                NavigateToPose,
+                'navigate_to_pose',
+                self._execute_navigate_to_pose,
+            )
         self._pending_runs: dict[int, _PendingRun] = {}
         self._run_id = 0
         self._active_run_id = 0
@@ -276,14 +285,28 @@ class PlannerComparisonNode(Node):
         )
 
     def _goal_callback(self, goal: PoseStamped) -> None:
+        self._start_planner_comparison(goal, source='goal_pose topic')
+
+    def _execute_navigate_to_pose(self, goal_handle) -> NavigateToPose.Result:
+        accepted = self._start_planner_comparison(
+            goal_handle.request.pose,
+            source='navigate_to_pose action',
+        )
+        if accepted:
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+        return NavigateToPose.Result()
+
+    def _start_planner_comparison(self, goal: PoseStamped, source: str) -> bool:
         if self._map is None:
             self.get_logger().warning('ignored goal: no occupancy map received yet')
-            return
+            return False
         try:
             start = self._lookup_start_pose()
         except TransformException as exc:
             self.get_logger().warning(f'ignored goal: TF lookup failed: {exc}')
-            return
+            return False
 
         map_frame = str(self.get_parameter('global_frame').value)
         try:
@@ -293,10 +316,10 @@ class PlannerComparisonNode(Node):
                 f'ignored goal: cannot transform frame {goal.header.frame_id!r} '
                 f'to {map_frame!r}: {exc}'
             )
-            return
+            return False
 
         self.get_logger().info(
-            'planning comparison goal received: '
+            f'planning comparison goal received via {source}: '
             f'start=({start.pose.position.x:.2f},{start.pose.position.y:.2f}) '
             f'goal=({goal.pose.position.x:.2f},{goal.pose.position.y:.2f})'
         )
@@ -324,6 +347,7 @@ class PlannerComparisonNode(Node):
             args=(run_id, start_point, goal_point, map_frame),
             daemon=True,
         ).start()
+        return True
 
     def _lookup_start_pose(self) -> PoseStamped:
         target_frame = str(self.get_parameter('global_frame').value)

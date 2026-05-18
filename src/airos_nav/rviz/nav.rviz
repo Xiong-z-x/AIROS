@@ -5,8 +5,6 @@ Panels:
   Name: Tool Properties
 - Class: rviz_common/Views
   Name: Views
-- Class: nav2_rviz_plugins/Navigation 2
-  Name: Navigation 2
 Visualization Manager:
   Class: ''
   Displays:
@@ -412,7 +410,9 @@ Visualization Manager:
   - Class: rviz_default_plugins/SetInitialPose
     Topic:
       Value: /initialpose
-  - Class: nav2_rviz_plugins/GoalTool
+  - Class: rviz_default_plugins/SetGoal
+    Topic:
+      Value: /goal_pose
   - Class: rviz_default_plugins/PublishPoint
     Topic:
       Value: /clicked_point

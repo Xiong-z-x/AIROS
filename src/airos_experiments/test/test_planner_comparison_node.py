@@ -95,3 +95,16 @@ def test_planner_only_launch_does_not_start_motion_servers():
     assert "nav_stack_mode': 'planner_only'" in comparison_launch
     assert 'single_floor_planner_showcase.yaml' in comparison_launch
     assert 'planner_comparison_node' in comparison_launch
+
+
+def test_planner_comparison_accepts_rviz_goal_topic_and_nav2_action_without_cmd_vel():
+    source = Path(
+        'src/airos_experiments/airos_experiments/planner_comparison_node.py'
+    ).read_text(encoding='utf-8')
+
+    assert "self.declare_parameter('goal_topic', '/goal_pose')" in source
+    assert 'NavigateToPose' in source
+    assert "'navigate_to_pose'" in source
+    assert 'self._start_planner_comparison(' in source
+    assert 'create_publisher(Twist' not in source
+    assert "'/cmd_vel'" not in source

@@ -475,16 +475,20 @@ def test_nav_rviz_prefers_nav2_map_and_shows_aligned_slam_cloud() -> None:
         assert live_cloud['Topic']['Depth'] == 1
 
 
-def test_nav_rviz_uses_nav2_goal_and_hides_pct_path_by_default() -> None:
+def test_nav_rviz_uses_goal_pose_topic_and_hides_pct_path_by_default() -> None:
     rviz_config = yaml.safe_load(_read_text('src/airos_nav/rviz/nav.rviz'))
     tools = rviz_config['Visualization Manager']['Tools']
     tool_classes = {tool['Class'] for tool in tools}
+    set_goal_tools = [
+        tool for tool in tools if tool['Class'] == 'rviz_default_plugins/SetGoal'
+    ]
     terrain_path = _rviz_display('Terrain PCT Path /pct_path')
     dynamic_obstacles = _rviz_display('Dynamic Obstacles')
 
-    assert 'nav2_rviz_plugins/GoalTool' in tool_classes
-    assert 'rviz_default_plugins/SetGoal' not in tool_classes
-    assert any(
+    assert 'nav2_rviz_plugins/GoalTool' not in tool_classes
+    assert set_goal_tools
+    assert set_goal_tools[0]['Topic']['Value'] == '/goal_pose'
+    assert not any(
         panel['Class'] == 'nav2_rviz_plugins/Navigation 2'
         for panel in rviz_config['Panels']
     )
