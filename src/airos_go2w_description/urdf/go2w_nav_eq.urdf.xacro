@@ -54,15 +54,17 @@
           </geometry>
         </visual>
       </xacro:if>
-      <visual>
-        <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
-        <geometry>
-          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
-        </geometry>
-        <material name="wheel_black">
-          <color rgba="0.015 0.015 0.018 1.0"/>
-        </material>
-      </visual>
+      <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+        <visual>
+          <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
+          <geometry>
+            <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+          </geometry>
+          <material name="wheel_black">
+            <color rgba="0.015 0.015 0.018 1.0"/>
+          </material>
+        </visual>
+      </xacro:if>
       <collision>
         <origin xyz="0 0 0" rpy="1.57079632679 0 0"/>
         <geometry>
@@ -121,15 +123,17 @@
         </geometry>
       </visual>
     </xacro:if>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${base_length} ${base_width} ${base_height}"/>
-      </geometry>
-      <material name="body_dark_blue">
-        <color rgba="0.76 0.78 0.78 1.0"/>
-      </material>
-    </visual>
+    <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${base_length} ${base_width} ${base_height}"/>
+        </geometry>
+        <material name="body_dark_blue">
+          <color rgba="0.76 0.78 0.78 1.0"/>
+        </material>
+      </visual>
+    </xacro:if>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -149,10 +153,12 @@
   <xacro:wheel prefix="fr" x="${wheel_x}" y="${-wheel_y}"/>
   <xacro:wheel prefix="rl" x="${-wheel_x}" y="${wheel_y}"/>
   <xacro:wheel prefix="rr" x="${-wheel_x}" y="${-wheel_y}"/>
-  <xacro:leg_visual prefix="fl" x="${wheel_x}" y="${wheel_y}"/>
-  <xacro:leg_visual prefix="fr" x="${wheel_x}" y="${-wheel_y}"/>
-  <xacro:leg_visual prefix="rl" x="${-wheel_x}" y="${wheel_y}"/>
-  <xacro:leg_visual prefix="rr" x="${-wheel_x}" y="${-wheel_y}"/>
+  <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+    <xacro:leg_visual prefix="fl" x="${wheel_x}" y="${wheel_y}"/>
+    <xacro:leg_visual prefix="fr" x="${wheel_x}" y="${-wheel_y}"/>
+    <xacro:leg_visual prefix="rl" x="${-wheel_x}" y="${wheel_y}"/>
+    <xacro:leg_visual prefix="rr" x="${-wheel_x}" y="${-wheel_y}"/>
+  </xacro:if>
 
   <link name="lidar_link">
     <xacro:if value="$(eval '${visual_profile}' == 'reference_mesh')">
@@ -163,15 +169,17 @@
         </geometry>
       </visual>
     </xacro:if>
-    <visual>
-      <origin xyz="0 0 -0.035" rpy="0 0 0"/>
-      <geometry>
-        <cylinder radius="0.045" length="0.055"/>
-      </geometry>
-      <material name="sensor_green">
-        <color rgba="0.05 0.50 0.38 1.0"/>
-      </material>
-    </visual>
+    <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+      <visual>
+        <origin xyz="0 0 -0.035" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.045" length="0.055"/>
+        </geometry>
+        <material name="sensor_green">
+          <color rgba="0.05 0.50 0.38 1.0"/>
+        </material>
+      </visual>
+    </xacro:if>
     <xacro:cylinder_inertial mass="0.2" radius="0.045" length="0.055"/>
   </link>
 
@@ -190,15 +198,17 @@
   </joint>
 
   <link name="imu_link">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.055 0.035 0.02"/>
-      </geometry>
-      <material name="imu_orange">
-        <color rgba="0.8 0.35 0.05 1.0"/>
-      </material>
-    </visual>
+    <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.055 0.035 0.02"/>
+        </geometry>
+        <material name="imu_orange">
+          <color rgba="0.8 0.35 0.05 1.0"/>
+        </material>
+      </visual>
+    </xacro:if>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -215,15 +225,17 @@
   </joint>
 
   <link name="camera_link">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.055 0.08 0.045"/>
-      </geometry>
-      <material name="camera_gray">
-        <color rgba="0.18 0.18 0.2 1.0"/>
-      </material>
-    </visual>
+    <xacro:if value="$(eval '${visual_profile}' != 'reference_mesh')">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.055 0.08 0.045"/>
+        </geometry>
+        <material name="camera_gray">
+          <color rgba="0.18 0.18 0.2 1.0"/>
+        </material>
+      </visual>
+    </xacro:if>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
