@@ -90,7 +90,10 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert (
         "'slam_rebuild_period_sec': LaunchConfiguration('slam_rebuild_period_sec')"
     ) in launch_text
-    assert "DeclareLaunchArgument('terrain_odom_topic', default_value='/fast_lio_odom_world')" in launch_text
+    assert (
+        "DeclareLaunchArgument('terrain_odom_topic', "
+        "default_value='/fast_lio_odom_world')"
+    ) in launch_text
     assert "executable='slam_scan_projector'" in launch_text
     assert "name='fast_lio_registered_aligner'" in launch_text
     assert "'input_topic': '/cloud_registered'" in launch_text
@@ -153,7 +156,7 @@ def test_fast_lio_visual_launch_leaves_laser_map_to_fast_lio_only() -> None:
     assert "DeclareLaunchArgument('robot_spawn_y', default_value='0.0')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_z', default_value='0.26')" in launch_text
     assert "DeclareLaunchArgument('robot_spawn_yaw', default_value='0.0')" in launch_text
-    assert "'min_visible_z': 0.08" in launch_text
+    assert "'min_visible_z': 0.03" in launch_text
     assert "'max_points': 800000" in launch_text
 
 
@@ -443,8 +446,8 @@ def test_nav_rviz_prefers_nav2_map_and_shows_aligned_slam_cloud() -> None:
     assert terrain_cloud['Size (Pixels)'] == 2
     assert terrain_cloud['Size (m)'] == 0.02
 
-    assert fast_lio_cost_scan['Enabled'] is True
-    assert fast_lio_cost_scan['Value'] is True
+    assert fast_lio_cost_scan['Enabled'] is False
+    assert fast_lio_cost_scan['Value'] is False
     assert fast_lio_cost_scan['Topic']['Value'] == '/slam_scan'
     assert fast_lio_cost_scan['Color Transformer'] == 'FlatColor'
     assert fast_lio_cost_scan['Style'] == 'Flat Squares'

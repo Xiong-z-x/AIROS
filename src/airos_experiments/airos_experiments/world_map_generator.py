@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
@@ -20,9 +21,15 @@ def _is_occupied(
 ) -> bool:
     for obstacle in obstacles:
         if isinstance(obstacle, RectObstacle):
+            dx = x - obstacle.cx
+            dy = y - obstacle.cy
+            cos_yaw = math.cos(obstacle.yaw)
+            sin_yaw = math.sin(obstacle.yaw)
+            local_x = cos_yaw * dx + sin_yaw * dy
+            local_y = -sin_yaw * dx + cos_yaw * dy
             if (
-                obstacle.cx - obstacle.hx - inflate <= x <= obstacle.cx + obstacle.hx + inflate
-                and obstacle.cy - obstacle.hy - inflate <= y <= obstacle.cy + obstacle.hy + inflate
+                abs(local_x) <= obstacle.hx + inflate
+                and abs(local_y) <= obstacle.hy + inflate
             ):
                 return True
         else:

@@ -37,7 +37,11 @@ def test_nav_launch_can_run_controller_only_for_pct_execution() -> None:
 
     assert "DeclareLaunchArgument('nav_stack_mode', default_value='full')" in launch_text
     assert (
-        "nav_stack_mode must be 'full', 'controller_only' or 'safety_only'"
+        "nav_stack_mode must be 'full', 'planner_only', "
+        in launch_text
+    )
+    assert (
+        "'controller_only' or 'safety_only'"
         in launch_text
     )
     assert "name='controller_only_lifecycle_activator'" in launch_text
@@ -174,12 +178,12 @@ def test_base_controller_limits_match_nav2_safe_chain() -> None:
     assert '<xacro:property name="body_mass" value="14.0"/>' in robot_model
     assert '<mu1>3.0</mu1>' in robot_model
     assert '<mu2>3.0</mu2>' in robot_model
-    assert 0.30 <= diff_drive['linear']['x']['max_velocity'] <= 0.32
+    assert 0.62 <= diff_drive['linear']['x']['max_velocity'] <= 0.64
     assert diff_drive['linear']['x']['min_velocity'] >= 0.0
-    assert 0.20 <= diff_drive['linear']['x']['max_acceleration'] <= 0.22
-    assert 0.50 <= diff_drive['angular']['z']['max_velocity'] <= 0.55
-    assert diff_drive['angular']['z']['min_velocity'] >= -0.55
-    assert 0.50 <= diff_drive['angular']['z']['max_acceleration'] <= 0.55
+    assert 0.42 <= diff_drive['linear']['x']['max_acceleration'] <= 0.44
+    assert 1.08 <= diff_drive['angular']['z']['max_velocity'] <= 1.10
+    assert diff_drive['angular']['z']['min_velocity'] >= -1.10
+    assert 1.08 <= diff_drive['angular']['z']['max_acceleration'] <= 1.10
 
 
 def test_sim_odom_is_gazebo_truth_not_wheel_integrator() -> None:
@@ -241,11 +245,12 @@ def test_nav2_uses_mppi_with_safe_velocity_chain() -> None:
     assert 'CostCritic' in follow_path['critics']
     assert 'PathFollowCritic' in follow_path['critics']
     assert 'PreferForwardCritic' in follow_path['critics']
-    assert 0.22 <= smoother['max_velocity'][0] <= 0.24
+    assert 0.46 <= smoother['max_velocity'][0] <= 0.48
     assert smoother['min_velocity'][0] >= 0.0
-    assert 0.20 <= smoother['max_accel'][0] <= 0.22
-    assert 0.12 <= progress_checker['required_movement_radius'] <= 0.25
-    assert progress_checker['movement_time_allowance'] >= 18.0
+    assert 0.42 <= smoother['max_accel'][0] <= 0.44
+    assert 0.16 <= progress_checker['required_movement_radius'] <= 0.20
+    assert 17.5 <= progress_checker['movement_time_allowance'] <= 18.5
+    assert controller['failure_tolerance'] >= 1.0
     assert collision_monitor['StopZone']['max_points'] >= 5
     assert collision_monitor['SlowZone']['max_points'] >= 4
     assert collision_monitor['SlowZone']['slowdown_ratio'] >= 0.55
@@ -268,3 +273,25 @@ def test_nav2_uses_base_footprint_for_ground_pose_control() -> None:
     )
     assert nav_params['behavior_server']['ros__parameters']['robot_base_frame'] == 'base_footprint'
     assert nav_params['collision_monitor']['ros__parameters']['base_frame_id'] == 'base_footprint'
+
+
+def test_nav2_uses_fast_backup_recovery_tree_for_stalls() -> None:
+    launch_text = _read_text('src/airos_nav/launch/nav.launch.py')
+    bt_text = _read_text(
+        'src/airos_nav/behavior_trees/airos_replanning_backup.xml'
+    )
+    nav_params = yaml.safe_load(
+        _read_text('src/airos_nav/config/nav2_params.yaml')
+    )
+    bt_params = nav_params['bt_navigator']['ros__parameters']
+
+    assert 'default_nav_to_pose_bt_xml' in launch_text
+    assert 'airos_replanning_backup.xml' in launch_text
+    assert "'default_nav_to_pose_bt_xml': default_nav_to_pose_bt_xml" in launch_text
+    assert bt_params['default_nav_to_pose_bt_xml'] == ''
+    assert '<ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>' in bt_text
+    assert '<FollowPath path="{path}" controller_id="FollowPath"/>' in bt_text
+    assert 'backup_dist="0.55"' in bt_text
+    assert 'backup_speed="0.12"' in bt_text
+    assert 'ClearLocalCostmap' in bt_text
+    assert 'ClearGlobalCostmap' in bt_text

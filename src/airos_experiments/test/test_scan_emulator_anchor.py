@@ -4,9 +4,12 @@ from pathlib import Path
 from airos_experiments.scan_emulator import (
     OdomAnchor,
     Pose2D,
+    RectObstacle,
     _load_obstacles,
     _map_pose_from_anchor,
+    _ray_rect_intersection,
 )
+from airos_experiments.world_map_generator import _is_occupied
 
 
 def test_map_pose_from_anchor_translates_odom_delta() -> None:
@@ -44,3 +47,38 @@ def test_scan_obstacle_loader_excludes_dynamic_models_by_default() -> None:
 
     assert len(default_obstacles) == 17
     assert len(dynamic_obstacles) == 19
+
+
+def test_rotated_box_pose_is_used_by_scan_and_generated_map() -> None:
+    obstacle = RectObstacle(0.0, 0.0, 2.0, 0.2, 1.0, math.pi / 4.0)
+
+    assert _is_occupied(
+        math.sqrt(0.5),
+        math.sqrt(0.5),
+        [obstacle],
+        inflate=0.0,
+    )
+    assert not _is_occupied(
+        math.sqrt(0.5),
+        -math.sqrt(0.5),
+        [obstacle],
+        inflate=0.0,
+    )
+
+    hit = _ray_rect_intersection(
+        -3.0,
+        -3.0,
+        math.sqrt(0.5),
+        math.sqrt(0.5),
+        obstacle,
+    )
+    miss = _ray_rect_intersection(
+        -3.0,
+        3.0,
+        1.0,
+        0.0,
+        obstacle,
+    )
+
+    assert hit is not None
+    assert miss is None

@@ -27,6 +27,7 @@ class RectObstacle:
     hx: float
     hy: float
     height: float = 1.0
+    yaw: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,15 @@ def _parse_xyz(text: Optional[str]) -> tuple[float, float, float]:
     return parts[0], parts[1], parts[2]
 
 
+def _parse_pose_xyzyaw(text: Optional[str]) -> tuple[float, float, float, float]:
+    if not text:
+        return 0.0, 0.0, 0.0, 0.0
+    parts = [float(part) for part in text.split()]
+    while len(parts) < 6:
+        parts.append(0.0)
+    return parts[0], parts[1], parts[2], parts[5]
+
+
 def _ray_rect_intersection(
     origin_x: float,
     origin_y: float,
@@ -120,29 +130,38 @@ def _ray_rect_intersection(
     dir_y: float,
     rect: RectObstacle,
 ) -> Optional[float]:
-    min_x = rect.cx - rect.hx
-    max_x = rect.cx + rect.hx
-    min_y = rect.cy - rect.hy
-    max_y = rect.cy + rect.hy
+    cos_yaw = math.cos(rect.yaw)
+    sin_yaw = math.sin(rect.yaw)
+    rel_x = origin_x - rect.cx
+    rel_y = origin_y - rect.cy
+    local_origin_x = cos_yaw * rel_x + sin_yaw * rel_y
+    local_origin_y = -sin_yaw * rel_x + cos_yaw * rel_y
+    local_dir_x = cos_yaw * dir_x + sin_yaw * dir_y
+    local_dir_y = -sin_yaw * dir_x + cos_yaw * dir_y
+
+    min_x = -rect.hx
+    max_x = rect.hx
+    min_y = -rect.hy
+    max_y = rect.hy
 
     t_min = -math.inf
     t_max = math.inf
 
-    if abs(dir_x) < 1e-12:
-        if origin_x < min_x or origin_x > max_x:
+    if abs(local_dir_x) < 1e-12:
+        if local_origin_x < min_x or local_origin_x > max_x:
             return None
     else:
-        t1 = (min_x - origin_x) / dir_x
-        t2 = (max_x - origin_x) / dir_x
+        t1 = (min_x - local_origin_x) / local_dir_x
+        t2 = (max_x - local_origin_x) / local_dir_x
         t_min = max(t_min, min(t1, t2))
         t_max = min(t_max, max(t1, t2))
 
-    if abs(dir_y) < 1e-12:
-        if origin_y < min_y or origin_y > max_y:
+    if abs(local_dir_y) < 1e-12:
+        if local_origin_y < min_y or local_origin_y > max_y:
             return None
     else:
-        t1 = (min_y - origin_y) / dir_y
-        t2 = (max_y - origin_y) / dir_y
+        t1 = (min_y - local_origin_y) / local_dir_y
+        t2 = (max_y - local_origin_y) / local_dir_y
         t_min = max(t_min, min(t1, t2))
         t_max = min(t_max, max(t1, t2))
 
@@ -204,7 +223,7 @@ def _load_obstacles(
             continue
 
         pose_text = model.findtext('pose')
-        pos_x, pos_y, _ = _parse_xyz(pose_text)
+        pos_x, pos_y, _, yaw = _parse_pose_xyzyaw(pose_text)
         link = model.find('link')
         if link is None:
             continue
@@ -228,6 +247,7 @@ def _load_obstacles(
                     size_x / 2.0,
                     size_y / 2.0,
                     size_z,
+                    yaw,
                 )
             )
             continue

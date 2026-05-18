@@ -122,6 +122,7 @@ def _launch_setup(context, *args, **kwargs):
         )
     log_level = LaunchConfiguration('log_level')
     collision_scan_topic = LaunchConfiguration('collision_scan_topic')
+    default_nav_to_pose_bt_xml = LaunchConfiguration('default_nav_to_pose_bt_xml')
     slam_nav_startup = LaunchConfiguration('slam_nav_startup')
     slam_nav_startup_value = slam_nav_startup.perform(context)
     if slam_nav_startup_value not in {'autostart', 'gated'}:
@@ -143,6 +144,7 @@ def _launch_setup(context, *args, **kwargs):
                 'use_sim_time': use_sim_time,
                 'yaml_filename': map_file,
                 'graph_filepath': route_graph,
+                'default_nav_to_pose_bt_xml': default_nav_to_pose_bt_xml,
             },
             convert_types=True,
         ),
@@ -200,6 +202,11 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(_is(localization, 'slam_toolbox')),
         launch_arguments={
             'use_sim_time': use_sim_time,
+            'params_file': os.path.join(
+                pkg_slam,
+                'config',
+                'slam_toolbox_localization.yaml',
+            ),
         }.items(),
     )
 
@@ -208,6 +215,11 @@ def _launch_setup(context, *args, **kwargs):
         condition=IfCondition(_is(localization, 'slam_toolbox_mapping')),
         launch_arguments={
             'use_sim_time': use_sim_time,
+            'params_file': os.path.join(
+                pkg_slam,
+                'config',
+                'slam_toolbox_mapping.yaml',
+            ),
         }.items(),
     )
 
@@ -459,28 +471,28 @@ def _launch_setup(context, *args, **kwargs):
             "' != ''",
         ])),
         actions=[
-        Node(
-            package='nav2_collision_monitor',
-            executable='collision_monitor',
-            name='collision_monitor',
-            output='screen',
-            parameters=[
-                configured_params,
-                {'scan.topic': collision_scan_topic},
-            ],
-        ),
-        Node(
-            condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_collision_monitor',
-            output='screen',
-            parameters=[
-                {'use_sim_time': use_sim_time},
-                {'autostart': nav_lifecycle_autostart},
-                {'node_names': ['collision_monitor']},
-            ],
-        ),
+            Node(
+                package='nav2_collision_monitor',
+                executable='collision_monitor',
+                name='collision_monitor',
+                output='screen',
+                parameters=[
+                    configured_params,
+                    {'scan.topic': collision_scan_topic},
+                ],
+            ),
+            Node(
+                condition=IfCondition(_full_stack_enabled(nav_stack_mode)),
+                package='nav2_lifecycle_manager',
+                executable='lifecycle_manager',
+                name='lifecycle_manager_collision_monitor',
+                output='screen',
+                parameters=[
+                    {'use_sim_time': use_sim_time},
+                    {'autostart': nav_lifecycle_autostart},
+                    {'node_names': ['collision_monitor']},
+                ],
+            ),
         ]
     )
 
@@ -583,6 +595,18 @@ def generate_launch_description():
         DeclareLaunchArgument('slam_nav_startup', default_value='gated'),
         DeclareLaunchArgument('external_map_manager', default_value='true'),
         DeclareLaunchArgument('collision_scan_topic', default_value='/scan'),
+        DeclareLaunchArgument(
+            'default_nav_to_pose_bt_xml',
+            default_value=os.path.join(
+                pkg_nav,
+                'behavior_trees',
+                'airos_replanning_backup.xml',
+            ),
+            description=(
+                'NavigateToPose behavior tree. The default backs up first '
+                'after progress stalls, then clears costmaps and replans.'
+            ),
+        ),
         DeclareLaunchArgument('log_level', default_value='info'),
         OpaqueFunction(function=_launch_setup),
     ])

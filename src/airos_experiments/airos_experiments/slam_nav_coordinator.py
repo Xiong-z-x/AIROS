@@ -76,8 +76,14 @@ class SlamNavCoordinator(Node):
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('robot_frame', 'base_footprint')
-        self.declare_parameter('navigation_manager_service', '/lifecycle_manager_navigation/manage_nodes')
-        self.declare_parameter('collision_manager_service', '/lifecycle_manager_collision_monitor/manage_nodes')
+        self.declare_parameter(
+            'navigation_manager_service',
+            '/lifecycle_manager_navigation/manage_nodes',
+        )
+        self.declare_parameter(
+            'collision_manager_service',
+            '/lifecycle_manager_collision_monitor/manage_nodes',
+        )
         self.declare_parameter('startup_timeout_sec', 45.0)
         self.declare_parameter('poll_period_sec', 0.5)
         self.declare_parameter('map_edge_margin_m', 0.35)

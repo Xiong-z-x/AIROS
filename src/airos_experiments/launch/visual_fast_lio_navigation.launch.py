@@ -252,7 +252,7 @@ def generate_launch_description():
             'output_topic': '/Laser_map_colored',
             'min_z': -0.40,
             'max_z': 2.20,
-            'min_visible_z': 0.08,
+            'min_visible_z': 0.03,
             'max_points': 800000,
         }],
     )

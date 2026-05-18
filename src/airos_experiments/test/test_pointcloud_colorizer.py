@@ -70,4 +70,4 @@ def test_colorizer_publishes_reliable_for_rviz_compatibility() -> None:
 
     assert 'publish_qos = QoSProfile' in source
     assert 'reliability=ReliabilityPolicy.RELIABLE' in source
-    assert "self.declare_parameter('min_visible_z', 0.08)" in source
+    assert "self.declare_parameter('min_visible_z', 0.03)" in source

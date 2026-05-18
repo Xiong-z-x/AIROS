@@ -156,7 +156,7 @@ class PointCloudColorizer(Node):
         self.declare_parameter('output_topic', '/Laser_map_colored')
         self.declare_parameter('min_z', -0.40)
         self.declare_parameter('max_z', 2.20)
-        self.declare_parameter('min_visible_z', 0.08)
+        self.declare_parameter('min_visible_z', 0.03)
         self.declare_parameter('max_points', 220000)
 
         self._input_topic = str(self.get_parameter('input_topic').value)

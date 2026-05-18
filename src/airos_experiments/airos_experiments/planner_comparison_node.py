@@ -17,6 +17,7 @@ from rclpy.action import ActionClient, ActionServer
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import Marker, MarkerArray
@@ -71,6 +72,7 @@ class GridMap:
     data: list[int]
     occupied_threshold: int
     robot_radius_m: float
+    unknown_is_occupied: bool
     inflated: set[GridIndex]
 
     @classmethod
@@ -79,6 +81,7 @@ class GridMap:
         msg: OccupancyGrid,
         occupied_threshold: int,
         robot_radius_m: float,
+        unknown_is_occupied: bool = False,
     ) -> 'GridMap':
         grid = cls(
             width=msg.info.width,
@@ -89,6 +92,7 @@ class GridMap:
             data=list(msg.data),
             occupied_threshold=occupied_threshold,
             robot_radius_m=robot_radius_m,
+            unknown_is_occupied=unknown_is_occupied,
             inflated=set(),
         )
         grid.inflated = grid._build_inflated_obstacles()
@@ -119,7 +123,9 @@ class GridMap:
     def raw_occupied(self, cell: GridIndex) -> bool:
         x, y = cell
         value = self.data[y * self.width + x]
-        return value < 0 or value >= self.occupied_threshold
+        if value < 0:
+            return self.unknown_is_occupied
+        return value >= self.occupied_threshold
 
     def occupied(self, cell: GridIndex) -> bool:
         return cell in self.inflated
@@ -183,6 +189,11 @@ class PlannerComparisonNode(Node):
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('robot_radius_m', 0.43)
         self.declare_parameter('occupied_threshold', 65)
+        self.declare_parameter('unknown_is_occupied', False)
+        self.declare_parameter('slam_scan_topic', '/slam_scan')
+        self.declare_parameter('use_slam_scan_overlay', True)
+        self.declare_parameter('slam_scan_max_age_sec', 2.0)
+        self.declare_parameter('slam_scan_obstacle_radius_m', 0.25)
         self.declare_parameter('snap_radius_m', 1.2)
         self.declare_parameter('q_grid_step', 4)
         self.declare_parameter('q_max_iterations', 60000)
@@ -191,14 +202,21 @@ class PlannerComparisonNode(Node):
         self.declare_parameter('rrt_step_m', 0.65)
         self.declare_parameter('rrt_goal_sample_rate', 0.12)
         self.declare_parameter('rrt_rewire_radius_m', 1.4)
+        self.declare_parameter('rrt_attempts', 3)
         self.declare_parameter('random_seed', 7)
         self.declare_parameter('animate_paths', True)
+        self.declare_parameter('publish_metrics', False)
         self.declare_parameter('path_animation_rate_hz', 14.0)
         self.declare_parameter('path_animation_spacing_m', 0.12)
         self.declare_parameter('path_animation_points_per_tick', 3)
         self.declare_parameter('enable_navigate_to_pose_bridge', True)
+        self.declare_parameter('execute_primary_nav2_goal', False)
+        self.declare_parameter('navigate_to_pose_action_name', 'navigate_to_pose')
 
         self._map: GridMap | None = None
+        self._planning_map: GridMap | None = None
+        self._latest_slam_scan: LaserScan | None = None
+        self._latest_slam_scan_monotonic: float | None = None
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._planner_client = ActionClient(
@@ -206,8 +224,19 @@ class PlannerComparisonNode(Node):
             ComputePathToPose,
             'compute_path_to_pose',
         )
+        self._primary_nav_client: ActionClient | None = None
+        self._active_primary_nav_goal = None
+        if bool(self.get_parameter('execute_primary_nav2_goal').value):
+            self._primary_nav_client = ActionClient(
+                self,
+                NavigateToPose,
+                str(self.get_parameter('navigate_to_pose_action_name').value),
+            )
         self._navigate_server: ActionServer | None = None
-        if bool(self.get_parameter('enable_navigate_to_pose_bridge').value):
+        if (
+            bool(self.get_parameter('enable_navigate_to_pose_bridge').value)
+            and self._primary_nav_client is None
+        ):
             self._navigate_server = ActionServer(
                 self,
                 NavigateToPose,
@@ -240,6 +269,12 @@ class PlannerComparisonNode(Node):
             self._goal_callback,
             reliable_qos,
         )
+        self.create_subscription(
+            LaserScan,
+            str(self.get_parameter('slam_scan_topic').value),
+            self._slam_scan_callback,
+            reliable_qos,
+        )
         path_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -247,10 +282,26 @@ class PlannerComparisonNode(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self._path_publishers = {
-            'smac': self.create_publisher(Path, '/planner_compare/smac_path', path_qos),
-            'theta_star': self.create_publisher(Path, '/planner_compare/theta_star_path', path_qos),
-            'q_learning': self.create_publisher(Path, '/planner_compare/q_learning_path', path_qos),
-            'rrt_star': self.create_publisher(Path, '/planner_compare/rrt_star_path', path_qos),
+            'smac': self.create_publisher(
+                Path,
+                '/planner_compare/smac_path',
+                path_qos,
+            ),
+            'theta_star': self.create_publisher(
+                Path,
+                '/planner_compare/theta_star_path',
+                path_qos,
+            ),
+            'q_learning': self.create_publisher(
+                Path,
+                '/planner_compare/q_learning_path',
+                path_qos,
+            ),
+            'rrt_star': self.create_publisher(
+                Path,
+                '/planner_compare/rrt_star_path',
+                path_qos,
+            ),
         }
         self._metrics_pub = self.create_publisher(
             MarkerArray,
@@ -278,11 +329,19 @@ class PlannerComparisonNode(Node):
             msg,
             occupied_threshold=int(self.get_parameter('occupied_threshold').value),
             robot_radius_m=float(self.get_parameter('robot_radius_m').value),
+            unknown_is_occupied=bool(
+                self.get_parameter('unknown_is_occupied').value
+            ),
         )
+        self._planning_map = self._map
         self.get_logger().info(
             f'map loaded for planner comparison: {self._map.width}x{self._map.height} '
             f'res={self._map.resolution:.3f} inflated={len(self._map.inflated)}'
         )
+
+    def _slam_scan_callback(self, msg: LaserScan) -> None:
+        self._latest_slam_scan = msg
+        self._latest_slam_scan_monotonic = time.monotonic()
 
     def _goal_callback(self, goal: PoseStamped) -> None:
         self._start_planner_comparison(goal, source='goal_pose topic')
@@ -325,6 +384,7 @@ class PlannerComparisonNode(Node):
         )
         start_point = (start.pose.position.x, start.pose.position.y)
         goal_point = (goal.pose.position.x, goal.pose.position.y)
+        self._planning_map = self._map_with_slam_scan_overlay(start_point)
 
         self._run_id += 1
         run_id = self._run_id
@@ -347,6 +407,7 @@ class PlannerComparisonNode(Node):
             args=(run_id, start_point, goal_point, map_frame),
             daemon=True,
         ).start()
+        self._send_primary_nav2_goal(goal)
         return True
 
     def _lookup_start_pose(self) -> PoseStamped:
@@ -364,8 +425,41 @@ class PlannerComparisonNode(Node):
         pose.pose.position.x = transform.transform.translation.x
         pose.pose.position.y = transform.transform.translation.y
         pose.pose.position.z = 0.0
-        pose.pose.orientation.w = 1.0
+        pose.pose.orientation = transform.transform.rotation
         return pose
+
+    def _send_primary_nav2_goal(self, goal: PoseStamped) -> None:
+        if self._primary_nav_client is None:
+            return
+        if not self._primary_nav_client.wait_for_server(timeout_sec=0.05):
+            self.get_logger().warning(
+                'primary Nav2 execution requested but navigate_to_pose is unavailable'
+            )
+            return
+        if self._active_primary_nav_goal is not None:
+            self._active_primary_nav_goal.cancel_goal_async()
+            self._active_primary_nav_goal = None
+        request = NavigateToPose.Goal()
+        request.pose = goal
+        future = self._primary_nav_client.send_goal_async(request)
+        future.add_done_callback(self._primary_nav_goal_response)
+
+    def _primary_nav_goal_response(self, future) -> None:
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.get_logger().warning('primary Nav2 execution goal rejected')
+            return
+        self._active_primary_nav_goal = goal_handle
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._primary_nav_result_response)
+
+    def _primary_nav_result_response(self, future) -> None:
+        wrapped = future.result()
+        if wrapped is None:
+            self.get_logger().warning('primary Nav2 execution ended without result')
+            return
+        self.get_logger().info(f'primary Nav2 execution result status={wrapped.status}')
+        self._active_primary_nav_goal = None
 
     def _goal_in_map_frame(self, goal: PoseStamped, map_frame: str) -> PoseStamped:
         source_frame = goal.header.frame_id or map_frame
@@ -618,7 +712,7 @@ class PlannerComparisonNode(Node):
             self._path_publishers[path_key].publish(_path_msg(points, frame_id, stamp))
 
     def _plan_smac_fallback(self, start: WorldPoint, goal: WorldPoint) -> PlannerResult:
-        if self._map is None:
+        if self._planning_map is None:
             return PlannerResult(
                 planner_id='smac_fallback',
                 display_name='SmacPlanner2D',
@@ -629,10 +723,10 @@ class PlannerComparisonNode(Node):
             )
         start_time = time.perf_counter()
         path, expanded = _grid_astar_path(
-            self._map,
+            self._planning_map,
             start,
             goal,
-            max_radius_cells=max(1, int(1.2 / self._map.resolution)),
+            max_radius_cells=max(1, int(1.2 / self._planning_map.resolution)),
         )
         return PlannerResult(
             planner_id='smac_fallback',
@@ -645,7 +739,7 @@ class PlannerComparisonNode(Node):
         )
 
     def _plan_q_learning(self, start: WorldPoint, goal: WorldPoint) -> PlannerResult:
-        if self._map is None:
+        if self._planning_map is None:
             return PlannerResult(
                 planner_id='q_learning',
                 display_name='Q-learning',
@@ -656,7 +750,7 @@ class PlannerComparisonNode(Node):
             )
         start_time = time.perf_counter()
         grid_step = max(1, int(self.get_parameter('q_grid_step').value))
-        coarse = _CoarseGrid(self._map, grid_step)
+        coarse = _CoarseGrid(self._planning_map, grid_step)
         start_cell = coarse.snap_free(
             coarse.world_to_cell(start),
             self._snap_radius_cells(grid_step),
@@ -683,18 +777,31 @@ class PlannerComparisonNode(Node):
             discount=float(self.get_parameter('q_discount').value),
         )
         path = [coarse.cell_to_world(cell) for cell in path_cells]
+        if len(path) >= 2:
+            path, repaired = _repair_path_on_grid(
+                self._planning_map,
+                path,
+                max_radius_cells=self._snap_radius_cells(1),
+            )
+        else:
+            repaired = False
+        success = len(path) >= 2 and _path_collision_free(self._planning_map, path)
         return PlannerResult(
             planner_id='q_learning',
             display_name='Q-learning',
             path=path,
             planning_time_ms=(time.perf_counter() - start_time) * 1000.0,
-            success=len(path) >= 2,
-            message='ok' if len(path) >= 2 else 'no policy path found',
+            success=success,
+            message=(
+                'ok_repaired' if success and repaired
+                else 'ok' if success
+                else 'no collision-free policy path found'
+            ),
             expanded_nodes=expanded,
         )
 
     def _plan_rrt_star(self, start: WorldPoint, goal: WorldPoint) -> PlannerResult:
-        if self._map is None:
+        if self._planning_map is None:
             return PlannerResult(
                 planner_id='rrt_star',
                 display_name='RRT*',
@@ -704,33 +811,82 @@ class PlannerComparisonNode(Node):
                 message='map unavailable',
             )
         start_time = time.perf_counter()
-        rng = random.Random(int(self.get_parameter('random_seed').value))
-        planner = _RrtStarPlanner(
-            self._map,
-            step_m=float(self.get_parameter('rrt_step_m').value),
-            goal_sample_rate=float(self.get_parameter('rrt_goal_sample_rate').value),
-            rewire_radius_m=float(self.get_parameter('rrt_rewire_radius_m').value),
-            max_samples=int(self.get_parameter('rrt_max_samples').value),
-            rng=rng,
-        )
-        path, expanded, message = planner.plan(start, goal)
+        base_seed = int(self.get_parameter('random_seed').value)
+        attempts = max(1, int(self.get_parameter('rrt_attempts').value))
+        best_path: list[WorldPoint] = []
+        best_expanded = 0
+        messages: list[str] = []
+        for attempt in range(attempts):
+            rng = random.Random(base_seed + attempt * 101)
+            planner = _RrtStarPlanner(
+                self._planning_map,
+                step_m=float(self.get_parameter('rrt_step_m').value),
+                goal_sample_rate=float(self.get_parameter('rrt_goal_sample_rate').value),
+                rewire_radius_m=float(self.get_parameter('rrt_rewire_radius_m').value),
+                max_samples=int(self.get_parameter('rrt_max_samples').value),
+                rng=rng,
+            )
+            path, expanded, message = planner.plan(start, goal)
+            best_expanded += expanded
+            messages.append(message)
+            if len(path) < 2:
+                continue
+            if not best_path or _path_length(path) < _path_length(best_path):
+                best_path = path
+        message = 'ok' if best_path else '; '.join(sorted(set(messages)))
         return PlannerResult(
             planner_id='rrt_star',
             display_name='RRT*',
-            path=path,
+            path=best_path,
             planning_time_ms=(time.perf_counter() - start_time) * 1000.0,
-            success=len(path) >= 2,
+            success=len(best_path) >= 2,
             message=message,
-            expanded_nodes=expanded,
+            expanded_nodes=best_expanded,
         )
 
     def _snap_radius_cells(self, grid_step: int) -> int:
-        if self._map is None:
+        if self._planning_map is None:
             return 1
         snap_radius_m = float(self.get_parameter('snap_radius_m').value)
-        return max(1, int(math.ceil(snap_radius_m / (self._map.resolution * grid_step))))
+        return max(1, int(math.ceil(snap_radius_m / (self._planning_map.resolution * grid_step))))
+
+    def _map_with_slam_scan_overlay(self, start: WorldPoint) -> GridMap:
+        if self._map is None:
+            raise RuntimeError('map unavailable')
+        if not bool(self.get_parameter('use_slam_scan_overlay').value):
+            return self._map
+        if self._latest_slam_scan is None or self._latest_slam_scan_monotonic is None:
+            return self._map
+        max_age = float(self.get_parameter('slam_scan_max_age_sec').value)
+        if time.monotonic() - self._latest_slam_scan_monotonic > max_age:
+            return self._map
+        try:
+            base_pose = self._lookup_start_pose()
+        except TransformException:
+            return self._map
+        yaw = _yaw_from_quaternion_xyzw(
+            base_pose.pose.orientation.x,
+            base_pose.pose.orientation.y,
+            base_pose.pose.orientation.z,
+            base_pose.pose.orientation.w,
+        )
+        overlay = _overlay_scan_obstacles(
+            self._map,
+            self._latest_slam_scan,
+            base_pose=(start[0], start[1], yaw),
+            obstacle_radius_m=float(
+                self.get_parameter('slam_scan_obstacle_radius_m').value
+            ),
+        )
+        self.get_logger().info(
+            f'planner comparison using SLAM scan overlay: '
+            f'inflated={len(overlay.inflated)} base={len(self._map.inflated)}'
+        )
+        return overlay
 
     def _publish_metrics(self, results: list[PlannerResult]) -> None:
+        if not bool(self.get_parameter('publish_metrics').value):
+            return
         if self._map is None:
             return
         markers = MarkerArray()
@@ -761,17 +917,25 @@ class PlannerComparisonNode(Node):
             marker.id = index
             marker.type = Marker.TEXT_VIEW_FACING
             marker.action = Marker.ADD
-            marker.pose.position.x = self._map.origin_x + 1.0
-            marker.pose.position.y = self._map.origin_y + 1.0 + index * 0.55
-            marker.pose.position.z = 0.35
+            marker.pose.position.x = (
+                self._map.origin_x
+                + self._map.width * self._map.resolution
+                - 11.5
+            )
+            marker.pose.position.y = (
+                self._map.origin_y
+                + self._map.height * self._map.resolution
+                - 2.0
+                - index * 0.72
+            )
+            marker.pose.position.z = 1.25
             marker.pose.orientation.w = 1.0
-            marker.scale.z = 0.34
+            marker.scale.z = 0.44
             marker.color.r, marker.color.g, marker.color.b = colors[index]
             marker.color.a = 1.0
             marker.text = (
-                f'{result.display_name}: {result.planning_time_ms:.0f} ms, '
-                f'{result.path_length_m:.1f} m, '
-                f'clear {clearance:.1f} m'
+                f'{result.display_name} | {result.planning_time_ms:.0f} ms | '
+                f'{result.path_length_m:.1f} m | C {clearance:.1f}'
             )
             markers.markers.append(marker)
         self._metrics_pub.publish(markers)
@@ -796,6 +960,10 @@ class _CoarseGrid:
         bx = min(self.base.width - 1, cell[0] * self.step + self.step // 2)
         by = min(self.base.height - 1, cell[1] * self.step + self.step // 2)
         return self.base.free((bx, by))
+
+    @property
+    def resolution(self) -> float:
+        return self.base.resolution * self.step
 
     def world_to_cell(self, point: WorldPoint) -> GridIndex:
         base_cell = self.base.world_to_grid(point)
@@ -899,17 +1067,31 @@ class _RrtStarPlanner:
                 nodes.append(goal)
                 parents.append(new_idx)
                 costs.append(best_cost + _distance(new_point, goal))
-                best_goal_idx = len(nodes) - 1
-                if len(nodes) > 160:
+                goal_idx = len(nodes) - 1
+                if best_goal_idx is None or costs[goal_idx] < costs[best_goal_idx]:
+                    best_goal_idx = goal_idx
+                if len(nodes) > min(self.max_samples, 520):
                     break
         if best_goal_idx is None:
             return [], len(nodes), 'RRT* did not connect to goal within sample budget'
-        return _backtrack_points(nodes, parents, best_goal_idx), len(nodes), 'ok'
+        path = _shortcut_path(
+            self.grid,
+            _backtrack_points(nodes, parents, best_goal_idx),
+        )
+        if not _path_collision_free(self.grid, path):
+            return [], len(nodes), 'RRT* path rejected by collision guard'
+        return path, len(nodes), 'ok'
 
     def _sample_free(self) -> WorldPoint:
         for _ in range(200):
-            x = self.rng.uniform(self.grid.origin_x, self.grid.origin_x + self.grid.width * self.grid.resolution)
-            y = self.rng.uniform(self.grid.origin_y, self.grid.origin_y + self.grid.height * self.grid.resolution)
+            x = self.rng.uniform(
+                self.grid.origin_x,
+                self.grid.origin_x + self.grid.width * self.grid.resolution,
+            )
+            y = self.rng.uniform(
+                self.grid.origin_y,
+                self.grid.origin_y + self.grid.height * self.grid.resolution,
+            )
             if self.grid.free(self.grid.world_to_grid((x, y))):
                 return (x, y)
         return self.grid.grid_to_world((self.grid.width // 2, self.grid.height // 2))
@@ -925,17 +1107,7 @@ class _RrtStarPlanner:
         )
 
     def _collision_free(self, start: WorldPoint, end: WorldPoint) -> bool:
-        distance = _distance(start, end)
-        steps = max(2, int(math.ceil(distance / (self.grid.resolution * 0.8))))
-        for index in range(steps + 1):
-            ratio = index / steps
-            point = (
-                start[0] + (end[0] - start[0]) * ratio,
-                start[1] + (end[1] - start[1]) * ratio,
-            )
-            if not self.grid.free(self.grid.world_to_grid(point)):
-                return False
-        return True
+        return _segment_collision_free(self.grid, start, end)
 
 
 def _value_iteration_path(
@@ -971,8 +1143,8 @@ def _value_iteration_path(
             return _smooth_grid_path(path), len(distance_to_goal)
         candidates = [
             neighbor
-            for neighbor in _neighbors8(current)
-            if grid.free(neighbor) and neighbor in values
+            for neighbor in _valid_neighbors8(grid, current)
+            if neighbor in values
         ]
         if not candidates:
             return [], len(distance_to_goal)
@@ -1012,7 +1184,7 @@ def _grid_astar_path(
             cells.reverse()
             smoothed = _smooth_grid_path(cells)
             return [grid.grid_to_world(cell) for cell in smoothed], expanded
-        for neighbor in _neighbors8(current):
+        for neighbor in _valid_neighbors8(grid, current):
             if not grid.free(neighbor):
                 continue
             step_cost = _grid_distance(current, neighbor)
@@ -1038,7 +1210,7 @@ def _dijkstra_distance_to_goal(
         expanded += 1
         if current_cost > distances[current]:
             continue
-        for neighbor in _neighbors8(current):
+        for neighbor in _valid_neighbors8(grid, current):
             if not grid.free(neighbor):
                 continue
             step_cost = _grid_distance(current, neighbor)
@@ -1079,6 +1251,134 @@ def _neighbors8(cell: GridIndex) -> list[GridIndex]:
         (x, y + 1),
         (x + 1, y + 1),
     ]
+
+
+def _valid_neighbors8(grid, cell: GridIndex) -> list[GridIndex]:
+    neighbors: list[GridIndex] = []
+    for neighbor in _neighbors8(cell):
+        if not grid.free(neighbor):
+            continue
+        dx = neighbor[0] - cell[0]
+        dy = neighbor[1] - cell[1]
+        if dx != 0 and dy != 0:
+            if not grid.free((cell[0] + dx, cell[1])) or not grid.free((cell[0], cell[1] + dy)):
+                continue
+        neighbors.append(neighbor)
+    return neighbors
+
+
+def _segment_collision_free(
+    grid: GridMap,
+    start: WorldPoint,
+    end: WorldPoint,
+) -> bool:
+    distance = _distance(start, end)
+    steps = max(2, int(math.ceil(distance / (grid.resolution * 0.5))))
+    for index in range(steps + 1):
+        ratio = index / steps
+        point = (
+            start[0] + (end[0] - start[0]) * ratio,
+            start[1] + (end[1] - start[1]) * ratio,
+        )
+        if not grid.free(grid.world_to_grid(point)):
+            return False
+    return True
+
+
+def _path_collision_free(grid: GridMap, points: list[WorldPoint]) -> bool:
+    if len(points) < 2:
+        return False
+    return all(
+        _segment_collision_free(grid, start, end)
+        for start, end in zip(points, points[1:])
+    )
+
+
+def _overlay_scan_obstacles(
+    grid: GridMap,
+    scan: LaserScan,
+    base_pose: tuple[float, float, float],
+    obstacle_radius_m: float,
+) -> GridMap:
+    data = list(grid.data)
+    base_x, base_y, base_yaw = base_pose
+    radius_cells = max(0, int(math.ceil(obstacle_radius_m / grid.resolution)))
+    for index, distance in enumerate(scan.ranges):
+        if not math.isfinite(distance):
+            continue
+        if distance < scan.range_min or distance > scan.range_max:
+            continue
+        angle = base_yaw + scan.angle_min + index * scan.angle_increment
+        hit = (
+            base_x + math.cos(angle) * distance,
+            base_y + math.sin(angle) * distance,
+        )
+        cell = grid.world_to_grid(hit)
+        if not grid.in_bounds(cell):
+            continue
+        for dx in range(-radius_cells, radius_cells + 1):
+            for dy in range(-radius_cells, radius_cells + 1):
+                if math.hypot(dx, dy) * grid.resolution > obstacle_radius_m:
+                    continue
+                marked = (cell[0] + dx, cell[1] + dy)
+                if grid.in_bounds(marked):
+                    data[marked[1] * grid.width + marked[0]] = 100
+    overlay = GridMap(
+        width=grid.width,
+        height=grid.height,
+        resolution=grid.resolution,
+        origin_x=grid.origin_x,
+        origin_y=grid.origin_y,
+        data=data,
+        occupied_threshold=grid.occupied_threshold,
+        robot_radius_m=grid.robot_radius_m,
+        unknown_is_occupied=grid.unknown_is_occupied,
+        inflated=set(),
+    )
+    overlay.inflated = overlay._build_inflated_obstacles()
+    return overlay
+
+
+def _repair_path_on_grid(
+    grid: GridMap,
+    points: list[WorldPoint],
+    max_radius_cells: int,
+) -> tuple[list[WorldPoint], bool]:
+    if len(points) < 2:
+        return points, False
+    repaired: list[WorldPoint] = [points[0]]
+    changed = False
+    for start, end in zip(points, points[1:]):
+        if _segment_collision_free(grid, start, end):
+            repaired.append(end)
+            continue
+        segment, _ = _grid_astar_path(
+            grid,
+            start,
+            end,
+            max_radius_cells=max_radius_cells,
+        )
+        if len(segment) < 2:
+            return [], True
+        repaired.extend(segment[1:])
+        changed = True
+    return _shortcut_path(grid, repaired), changed
+
+
+def _shortcut_path(grid: GridMap, points: list[WorldPoint]) -> list[WorldPoint]:
+    if len(points) <= 2:
+        return points
+    shortened = [points[0]]
+    index = 0
+    while index < len(points) - 1:
+        next_index = len(points) - 1
+        while next_index > index + 1:
+            if _segment_collision_free(grid, points[index], points[next_index]):
+                break
+            next_index -= 1
+        shortened.append(points[next_index])
+        index = next_index
+    return shortened
 
 
 def _backtrack_points(
@@ -1155,6 +1455,8 @@ def main() -> None:
     node = PlannerComparisonNode()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         if rclpy.ok():

@@ -38,6 +38,7 @@ def project_cloud_to_scan(
     max_points: int = 120000,
     surface_estimate_radius: float = 0.75,
     surface_estimate_min_points: int = 3,
+    filter_supported_surfaces: bool = True,
 ) -> LaserScan:
     scan = LaserScan()
     scan.header.stamp = cloud.header.stamp
@@ -72,7 +73,7 @@ def project_cloud_to_scan(
         relative_z = z - base_z
         if relative_z < min_z or relative_z > max_z:
             continue
-        if _is_supported_ramp_surface_point(
+        if filter_supported_surfaces and _is_supported_ramp_surface_point(
             points,
             point=(x, y, z),
             base_z=base_z,
@@ -225,6 +226,7 @@ class SlamScanProjector(Node):
         self.declare_parameter('max_points', 120000)
         self.declare_parameter('surface_estimate_radius', 0.75)
         self.declare_parameter('surface_estimate_min_points', 3)
+        self.declare_parameter('filter_supported_surfaces', True)
 
         self._cloud: PointCloud2 | None = None
         self._odom: Odometry | None = None
@@ -250,6 +252,9 @@ class SlamScanProjector(Node):
         )
         self._surface_estimate_min_points = int(
             self.get_parameter('surface_estimate_min_points').value
+        )
+        self._filter_supported_surfaces = bool(
+            self.get_parameter('filter_supported_surfaces').value
         )
 
         qos = QoSProfile(
@@ -312,6 +317,7 @@ class SlamScanProjector(Node):
             max_points=self._max_points,
             surface_estimate_radius=self._surface_estimate_radius,
             surface_estimate_min_points=self._surface_estimate_min_points,
+            filter_supported_surfaces=self._filter_supported_surfaces,
         )
         scan.header.stamp = self.get_clock().now().to_msg()
         self._publisher.publish(scan)
